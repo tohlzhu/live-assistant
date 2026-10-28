@@ -2,6 +2,14 @@ import { createHash } from "node:crypto";
 
 export const digest = (text) => createHash("sha256").update(text).digest("hex");
 
+// Drops trailing characters that match a one-character, non-global pattern. A /[…]+$/ replace would instead
+// backtrack quadratically over a long run of those characters that something else follows.
+export function trimTrailing(text, char) {
+  let end = text.length;
+  while (end > 0 && char.test(text[end - 1])) end--;
+  return text.slice(0, end);
+}
+
 export function redact(text) {
   return String(text)
     // A key still being printed (or whose end is past the observed window) has no END marker yet.

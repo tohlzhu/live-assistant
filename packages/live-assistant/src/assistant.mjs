@@ -5,7 +5,7 @@ import { z } from "zod";
 import { foundryCredential, foundryOrigin, audience } from "./foundry.mjs";
 import { FoundryLive } from "./live.mjs";
 import { JsonStore, Serial, EventLog } from "./store.mjs";
-import { redact, condense, DeltaMemory, tail } from "./text.mjs";
+import { redact, condense, DeltaMemory, tail, trimTrailing } from "./text.mjs";
 import { parseKeys } from "./keys.mjs";
 
 export const assistantInstructions = [
@@ -41,7 +41,7 @@ const intentSchema = z.strictObject({
 });
 const label = (number) => `${number}. `;
 // Spoken words without trailing punctuation, so a final "。" does not make the same words look new.
-const spoken = (text) => text.trim().replace(/[。.!！\s]+$/g, "");
+const spoken = (text) => trimTrailing(text.trim(), /[。.!！\s]/);
 const unobserved = "No terminal output can be observed for this request: no running session is shown or named. The session catalog and application status already supplied are current; nothing was sent to any terminal.";
 
 export function createLive(directory, config, transport) {
@@ -148,7 +148,7 @@ const decisionPattern = new RegExp([
 export function parseDecision(speech) {
   // A question ("批准 3？") asks about the proposal; it is never a decision.
   if (/[?？]/.test(speech)) return null;
-  const text = speech.trim().replace(/[。.!！,，、\s]+$/g, "").replace(/[。.!！,，、\s]+/g, " ");
+  const text = trimTrailing(speech.trim(), /[。.!！,，、\s]/).replace(/[。.!！,，、\s]+/g, " ");
   const match = decisionPattern.exec(text);
   if (!match) return null;
   const word = match[1].toLowerCase();
