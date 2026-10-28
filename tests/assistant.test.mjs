@@ -15,7 +15,7 @@ import { startAssistant } from "../packages/live-assistant/src/server.mjs";
 import { Assistant, parseDecision, createInterpreter } from "../packages/live-assistant/src/assistant.mjs";
 import { defaultAdapters, harnessEnvironment, findExecutable } from "../packages/live-assistant/src/harness.mjs";
 import { createSpeech } from "../packages/live-assistant/src/foundry.mjs";
-import { condense, detectPrompt, DeltaMemory } from "../packages/live-assistant/src/text.mjs";
+import { condense, detectPrompt, DeltaMemory, trimTrailing } from "../packages/live-assistant/src/text.mjs";
 import { EventLog } from "../packages/live-assistant/src/store.mjs";
 import { parseKeys, describeKeys, encodeStep } from "../packages/live-assistant/src/keys.mjs";
 import headless from "@xterm/headless";
@@ -86,6 +86,20 @@ test("text helpers condense spinners and detect native Codex, Claude and trust c
   assert.deepEqual(parseDecision("始终允许 5 号提案"), { allowed: true, mode: "always", number: 5 });
   for (const speech of ["不批准3号", "别批准3号", "先不要批准3号", "要批准3号吗", "批准3号可以吗", "他说批准3号",
     "批准3号和4号", "先看看输出再批准3号", "我不同意你的看法", "批准 3？", "批准3号?", "同意吗？", "确认？"]) assert.equal(parseDecision(speech), null, speech);
+});
+
+test("trailing punctuation is trimmed in linear time, even around long runs", () => {
+  assert.equal(trimTrailing("批准 3 号。 \n", /[。.!！\s]/), "批准 3 号");
+  assert.equal(trimTrailing("。。", /[。]/), "");
+  assert.equal(trimTrailing("a。b", /[。]/), "a。b");
+  // A /[…]+$/ replace needs seconds for the inner run; spoken decisions are parsed on every transcript update.
+  const inner = `批准${"\t".repeat(100_000)}3`;
+  const trailing = `批准 3${"。".repeat(100_000)}`;
+  const started = performance.now();
+  assert.deepEqual(parseDecision(inner), { allowed: true, mode: "once", number: 3 });
+  assert.deepEqual(parseDecision(trailing), { allowed: true, mode: "once", number: 3 });
+  const elapsed = performance.now() - started;
+  assert.ok(elapsed < 500, `took ${Math.round(elapsed)} ms`);
 });
 
 test("actual PTYs run independently, preserve Unicode/control keys and resize, and survive Web observer restart", async (t) => {
