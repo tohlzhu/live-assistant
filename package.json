@@ -1,0 +1,23 @@
+{
+  "name": "live-assistant-workspace",
+  "version": "0.2.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "assistant": "node --env-file-if-exists=.env scripts/live-assistant.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "node scripts/test-assistant-browser.mjs",
+    "test:live": "node --env-file-if-exists=.env scripts/e2e-assistant-live.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "node": "22.19.0"
+  }
+}
