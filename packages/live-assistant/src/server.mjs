@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { randomBytes, timingSafeEqual, randomUUID } from "node:crypto";
+import { randomBytes, timingSafeEqual, randomUUID, createHash } from "node:crypto";
 import { readFile, mkdir, statfs } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { join, dirname, resolve } from "node:path";
@@ -214,16 +214,27 @@ async function serve({
     "/vendor/xterm.css": [join(root, "node_modules/@xterm/xterm/css/xterm.css"), "text/css"],
     "/vendor/fit.js": [join(root, "node_modules/@xterm/addon-fit/lib/addon-fit.js"), "text/javascript"],
   };
+  // Assets revalidate by content hash, so an edit shows on the next load while an unchanged file costs a small 304.
+  // Firefox loads a CSS sprite once per #fragment, so style.css names icons.svg by hash and that URL caches for good.
+  const asset = async (path) => {
+    const [file, type] = assets[path];
+    let content = await readFile(file);
+    if (path === "/style.css") content = Buffer.from(content.toString().replaceAll("icons.svg#", `icons.svg?v=${(await asset("/icons.svg")).hash}#`));
+    return { type, content, hash: createHash("sha256").update(content).digest("base64url") };
+  };
   const server = createServer(async (request, response) => {
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader("Referrer-Policy", "no-referrer");
     response.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self' blob:; frame-ancestors 'none'");
     try {
       if (request.headers.host !== new URL(origin).host) { json(response, 403, { error: "Untrusted Host" }); return; }
-      if (request.method === "GET" && assets[request.url]) {
-        const [file, type] = assets[request.url];
-        response.writeHead(200, { "Content-Type": `${type}; charset=utf-8`, "Cache-Control": "no-store" });
-        response.end(await readFile(file)); return;
+      const url = new URL(request.url, origin);
+      if (request.method === "GET" && assets[url.pathname]) {
+        const { type, content, hash } = await asset(url.pathname);
+        const headers = { "Content-Type": `${type}; charset=utf-8`, ETag: `"${hash}"`,
+          "Cache-Control": url.searchParams.get("v") === hash ? "max-age=31536000, immutable" : "no-cache" };
+        if (request.headers["if-none-match"] === headers.ETag) { response.writeHead(304, headers); response.end(); return; }
+        response.writeHead(200, headers); response.end(content); return;
       }
       if (request.url === "/api/login" && request.method === "POST") {
         if (request.headers.origin !== origin) { json(response, 403, { error: "Untrusted Origin" }); return; }
@@ -239,7 +250,6 @@ async function serve({
       }
       if (!authenticated(request)) { json(response, 401, { error: "Authentication required" }); return; }
       if (request.method === "GET" && request.url === "/api/state") { json(response, 200, state()); return; }
-      const url = new URL(request.url, origin);
       // Files stream straight between the request and disk, outside the JSON body limit.
       if (request.method === "POST" && url.pathname === "/api/upload") {
         if (request.headers.origin !== origin) { json(response, 403, { error: "Untrusted Origin" }); return; }

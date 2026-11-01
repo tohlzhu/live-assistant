@@ -578,6 +578,29 @@ test("standalone HTTP and real WebSocket enforce login, Origin, status codes, sp
   assert.equal(app.sessions.get(created.id).state, "running");
 });
 
+test("static assets revalidate by content hash and the icon sprite, named by hash in style.css, caches for good", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "live-assets-test-"));
+  const app = await startAssistant({ directory, workspace: directory, password });
+  t.after(async () => { await app.close(); await rm(directory, { recursive: true }); });
+  const script = await fetch(`${app.origin}/vendor/xterm.js`);
+  assert.equal(script.status, 200);
+  assert.equal(script.headers.get("cache-control"), "no-cache");
+  const unchanged = await fetch(`${app.origin}/vendor/xterm.js`, { headers: { "If-None-Match": script.headers.get("etag") } });
+  assert.equal(unchanged.status, 304);
+  assert.equal((await unchanged.arrayBuffer()).byteLength, 0);
+  assert.equal((await fetch(`${app.origin}/vendor/xterm.js`, { headers: { "If-None-Match": '"other"' } })).status, 200);
+  // Firefox would otherwise load the sprite once per #fragment on every page load.
+  const css = await (await fetch(`${app.origin}/style.css`)).text();
+  const version = /icons\.svg\?v=([\w-]+)#keyboard/.exec(css)?.[1];
+  assert.ok(version && !css.includes("icons.svg#"), "every sprite reference carries the hash");
+  const sprite = await fetch(`${app.origin}/icons.svg?v=${version}`);
+  assert.equal(sprite.headers.get("cache-control"), "max-age=31536000, immutable");
+  assert.equal(sprite.headers.get("etag"), `"${version}"`);
+  assert.match(await sprite.text(), /id="keyboard"/);
+  assert.equal((await fetch(`${app.origin}/icons.svg?v=stale`)).headers.get("cache-control"), "no-cache");
+  assert.equal((await fetch(`${app.origin}/icons.svg`)).headers.get("cache-control"), "no-cache");
+});
+
 test("files upload into the session's current directory without overwriting and download from it within the roots", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "live-files-test-"));
   const app = await startAssistant({ directory, workspace: directory, password, uploadLimit: 1024 });
