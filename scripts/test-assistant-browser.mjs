@@ -492,7 +492,7 @@ try {
   const icons = await page.evaluate(async () => {
     const response = await fetch("/icons.svg");
     const mask = getComputedStyle(document.querySelector("#claim"), "::before").maskImage;
-    return { status: response.status, type: response.headers.get("content-type"), keyboard: (await response.text()).includes('id="keyboard"'), mask: /icons\.svg#keyboard/.test(mask) };
+    return { status: response.status, type: response.headers.get("content-type"), keyboard: (await response.text()).includes('id="keyboard"'), mask: /icons\.svg\?v=[\w-]+#keyboard/.test(mask) };
   });
   assert.deepEqual(icons, { status: 200, type: "image/svg+xml; charset=utf-8", keyboard: true, mask: true });
   await page.waitForFunction(() => /^\d+%$/.test(document.querySelector("#stat-cpu .stat-value").textContent), null, { timeout: 8000 });
