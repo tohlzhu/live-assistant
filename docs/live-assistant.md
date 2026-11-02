@@ -83,7 +83,7 @@ Terminate or close sessions you no longer need one by one through the UI; just c
 
 ```sh
 npm test               # unit and integration tests, no model calls
-npm run test:browser   # headless Chromium against a temporary backend
+npm run test:browser   # headless Chromium and Firefox against a temporary backend
 
 # Paid: real gpt-live-1 session in an isolated state directory under .live-assistant/.
 npm run test:live
@@ -92,7 +92,7 @@ npm run test:live -- --mandarin
 npm run test:live -- --mandarin --mandarin-fixtures .live-assistant/<accepted-voice-evidence>
 ```
 
-`test:browser` and `test:live` launch the Chromium installed by the current Playwright version by default; you can also point `LIVE_ASSISTANT_CHROMIUM` at an existing Chromium. The Chromium sandbox is kept. `test:live` requires `FOUNDRY_LIVE_ENDPOINT`, `FOUNDRY_INTENT_ENDPOINT`, `az login` and a local `espeak-ng`; missing tools cause an error, and audio tests are never skipped and reported as passed. Mandarin mode uses a separate GPT-Live session to generate single-sentence audio and must check the complete transcript and the close receipt; generating a repeated utterance counts as a failure. You can also explicitly reuse existing audio that has success evidence and a matching transcript, without fabricating a new generation record. The script uses a separate state directory on every run, writes the results to `result.json` inside it, and on exit cleans up each newly created terminal one by one and confirms that Live is closed.
+`test:browser` and `test:live` launch the Chromium installed by the current Playwright version by default; you can also point `LIVE_ASSISTANT_CHROMIUM` at an existing Chromium. The Chromium sandbox is kept. `test:browser` also checks logout in the Firefox installed by the current Playwright version (`npx playwright install firefox`). `test:live` requires `FOUNDRY_LIVE_ENDPOINT`, `FOUNDRY_INTENT_ENDPOINT`, `az login` and a local `espeak-ng`; missing tools cause an error, and audio tests are never skipped and reported as passed. Mandarin mode uses a separate GPT-Live session to generate single-sentence audio and must check the complete transcript and the close receipt; generating a repeated utterance counts as a failure. You can also explicitly reuse existing audio that has success evidence and a matching transcript, without fabricating a new generation record. The script uses a separate state directory on every run, writes the results to `result.json` inside it, and on exit cleans up each newly created terminal one by one and confirms that Live is closed.
 
 The launch, reasoning and hook behavior of the real Claude Code / Codex / Copilot / DSH have no automated scripts; accept them using the README's ["Manual testing with real harnesses"](../README.md#manual-testing-with-real-harnesses) and the manual test checklist below.
 

@@ -17,6 +17,7 @@
 | Azure CLI | 语音、解释器、TTS 以及可选的 DSH 临时 token 需要 `az login`（Entra ID）；不使用 API key |
 | Foundry 部署 | `gpt-live-1`（实时语音）、`gpt-6.1-sol`（语音与“交给助手”的意图解释）、`gpt-4o-mini-tts`（朗读）。纯终端使用不需要；每个模型都可选，部署名可以用环境变量覆盖 |
 | Chromium | 仅测试需要：默认使用当前 Playwright 版本安装的 Chromium（`npx playwright install chromium`），或通过 `LIVE_ASSISTANT_CHROMIUM` 指定 |
+| Firefox | 仅 `test:browser` 需要：当前 Playwright 版本安装的 Firefox（`npx playwright install firefox`），用于只有 Firefox 会暴露的登出检查 |
 | `espeak-ng` | 仅 `npm run test:live` 需要，用于合成测试语音 |
 
 ### Harness 启动方式
@@ -110,7 +111,7 @@ LIVE_ASSISTANT_ROOTS="$HOME/projects" npm run assistant
 | 命令 | 费用 | 内容 |
 |---|---|---|
 | `npm test` | 无 | `tests/assistant.test.mjs`、`tests/live.test.mjs` 与 `tests/settings.test.mjs`：页面设置（各模型独立 endpoint、校验、语音连接时的限制与持久化）、真实 tmux PTY、环境继承与秘密不外泄、默认/自定义工作目录与根目录限制、未安装 harness、关闭 tab、hook 进程与 socket、HTTP/WebSocket、文件上传下载（不覆盖、越界、大小上限、跨站）、附着快照序号、终端里打字结束权限卡片、焦点所在终端的确认隐藏/离开后以原编号重新提醒/打字后转交终端且原生菜单不成新卡片、语音决定的整句识别与隐藏卡片的编号决定、“交给助手”带运行中 session 清单且不完整意图转为澄清、按键提案（键名规范化、拒绝终端无法区分的组合、真实 tmux 送达字节含应用光标模式、始终允许与接管作废）与不可见控制字符输入转为澄清、验收进程、Live 协议（本地 WebSocket 替身）；模型使用注入的替身 |
-| `npm run test:browser` | 无 | headless Chromium：“未找到”标注、新建对话框（默认/自定义目录，创建后键盘焦点进入新终端）、键盘、多 tab、× 关闭 tab 并终止进程、终端占满并随窗口缩放且 PTY 尺寸跟随（末行不被外框遮挡）、语音切换页面焦点、编号卡片批准、按键卡片（逐步内容、始终允许、Ctrl+A 等组合键送达）、“在终端处理”切到目标 session 并聚焦终端、焦点在终端时权限请求隐藏、离开焦点后原编号卡片重现、点击 tab 名称聚焦终端、在终端按键结束卡片、语音控件状态（不可用/已连接、开关切换、断开复位）、上传（同名报错）与下载、刷新保留 PID、窄屏、全屏 TUI、鼠标、选择复制（拖选期间 TUI 收不到鼠标、Esc 取消、之后点击恢复转发）、复制屏幕、粘贴、Ctrl-C、独立验收表单与输出、交给助手（Ctrl+Enter、提交中状态与防重复提交）、对话按轮次交替显示（翻看时不被打断）、顶部栏合并命令与服务器状态、同源图标、头像菜单与设置对话框（默认值展示、无效 endpoint 报错不关闭、单项/全部恢复默认、保存后持久化）、登出（同一登录的其他 tab 同时回到登录页）、tab 颜色与备注（刷新后保留）、tab 折行 |
+| `npm run test:browser` | 无 | headless Chromium：“未找到”标注、新建对话框（默认/自定义目录，创建后键盘焦点进入新终端）、键盘、多 tab、× 关闭 tab 并终止进程、终端占满并随窗口缩放且 PTY 尺寸跟随（末行不被外框遮挡）、语音切换页面焦点、编号卡片批准、按键卡片（逐步内容、始终允许、Ctrl+A 等组合键送达）、“在终端处理”切到目标 session 并聚焦终端、焦点在终端时权限请求隐藏、离开焦点后原编号卡片重现、点击 tab 名称聚焦终端、在终端按键结束卡片、语音控件状态（不可用/已连接、开关切换、断开复位）、上传（同名报错）与下载、刷新保留 PID、窄屏、全屏 TUI、鼠标、选择复制（拖选期间 TUI 收不到鼠标、Esc 取消、之后点击恢复转发）、复制屏幕、粘贴、Ctrl-C、独立验收表单与输出、交给助手（Ctrl+Enter、提交中状态与防重复提交）、对话按轮次交替显示（翻看时不被打断）、顶部栏合并命令与服务器状态、同源图标、头像菜单与设置对话框（默认值展示、无效 endpoint 报错不关闭、单项/全部恢复默认、保存后持久化）、登出（同一登录的其他 tab 同时回到登录页）、tab 颜色与备注（刷新后保留）、tab 折行；headless Firefox：登出时不闪现错误提示 |
 | `npm run test:live [-- --mandarin]` | **付费**（Live） | 合成语音进入真实 `gpt-live-1`，语音提案 → 卡片批准 → 真实 shell；需要 `FOUNDRY_LIVE_ENDPOINT`、`FOUNDRY_INTENT_ENDPOINT` 与 `espeak-ng` |
 
 首个公开版本（v0.2）发布前：`npm test` 与 `npm run test:browser` 全部通过；`test:live` 英文模式在实时语音与意图解释分属不同 region 资源的配置下通过，普通话模式未运行。

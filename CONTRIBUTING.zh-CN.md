@@ -11,8 +11,8 @@
 ```sh
 npm ci
 npm test                          # unit and integration tests with a real tmux; no model calls
-npx playwright install chromium   # once, for the browser test
-npm run test:browser              # headless Chromium against a temporary backend
+npx playwright install chromium firefox   # once, for the browser test
+npm run test:browser                      # headless Chromium and Firefox against a temporary backend
 ```
 
 自动化测试只使用 shell 和测试替身 CLI，不需要安装 Claude Code、Codex、Copilot、DSH，也不需要 Azure 账号。`npm run test:live` 驱动真实的 GPT-Live 会话，**会产生费用**，需要你自己的 Azure AI Foundry 部署，提交 pull request 时不要求运行。各测试覆盖的内容和人工测试清单见 [README](README.zh-CN.md#测试) 和[运行指南](docs/live-assistant.zh-CN.md)。
