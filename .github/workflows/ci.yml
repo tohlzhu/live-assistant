@@ -22,8 +22,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y tmux && tmux -V
       - run: npm ci
       - run: npm test
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Chromium and Firefox
+        run: npx playwright install --with-deps chromium firefox
       # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor; the browser test keeps the Chromium sandbox on.
       - name: Allow the Chromium sandbox
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0

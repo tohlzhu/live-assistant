@@ -83,7 +83,7 @@ npm run assistant
 
 ```sh
 npm test               # unit and integration tests, no model calls
-npm run test:browser   # headless Chromium against a temporary backend
+npm run test:browser   # headless Chromium and Firefox against a temporary backend
 
 # Paid: real gpt-live-1 session in an isolated state directory under .live-assistant/.
 npm run test:live
@@ -92,7 +92,7 @@ npm run test:live -- --mandarin
 npm run test:live -- --mandarin --mandarin-fixtures .live-assistant/<accepted-voice-evidence>
 ```
 
-`test:browser` 和 `test:live` 默认启动当前 Playwright 版本安装的 Chromium，也可通过 `LIVE_ASSISTANT_CHROMIUM` 指定已有 Chromium，保留 Chromium sandbox。`test:live` 需要 `FOUNDRY_LIVE_ENDPOINT`、`FOUNDRY_INTENT_ENDPOINT`、`az login` 和本地 `espeak-ng`；缺少工具时报错，不把音频测试跳过为通过。普通话模式使用独立的 GPT-Live 会话生成单句音频，必须核对完整转录和关闭回执，生成重复语句算失败；也可以显式复用有成功证据、转录匹配的既有音频，不伪造新的生成记录。脚本每次使用独立状态目录，结果写入其中的 `result.json`，退出时逐个清理新增终端并确认 Live 已关闭。
+`test:browser` 和 `test:live` 默认启动当前 Playwright 版本安装的 Chromium，也可通过 `LIVE_ASSISTANT_CHROMIUM` 指定已有 Chromium，保留 Chromium sandbox。`test:browser` 还会用当前 Playwright 版本安装的 Firefox（`npx playwright install firefox`）检查登出。`test:live` 需要 `FOUNDRY_LIVE_ENDPOINT`、`FOUNDRY_INTENT_ENDPOINT`、`az login` 和本地 `espeak-ng`；缺少工具时报错，不把音频测试跳过为通过。普通话模式使用独立的 GPT-Live 会话生成单句音频，必须核对完整转录和关闭回执，生成重复语句算失败；也可以显式复用有成功证据、转录匹配的既有音频，不伪造新的生成记录。脚本每次使用独立状态目录，结果写入其中的 `result.json`，退出时逐个清理新增终端并确认 Live 已关闭。
 
 真实 Claude Code / Codex / Copilot / DSH 的启动、推理与 hook 行为没有自动化脚本，按 [README 的“真实 harness 手工测试”](../README.zh-CN.md#真实-harness-手工测试)和下面的人工测试清单验收。
 

@@ -13,8 +13,8 @@ You need Linux with `tmux` 3.4 and Node.js 22.19+ or 24+. `npm ci` also installs
 ```sh
 npm ci
 npm test                          # unit and integration tests with a real tmux; no model calls
-npx playwright install chromium   # once, for the browser test
-npm run test:browser              # headless Chromium against a temporary backend
+npx playwright install chromium firefox   # once, for the browser test
+npm run test:browser                      # headless Chromium and Firefox against a temporary backend
 ```
 
 The automated tests use only a shell and test-double CLIs, so you do not need Claude Code, Codex, Copilot, DSH or an

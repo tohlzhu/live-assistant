@@ -4,9 +4,13 @@ const $ = (id) => document.getElementById(id);
 let focusOnAttach = null, ws, terminal, fit, focused = localStorage.getItem("live-focus"), owner = false, current, snapshotReady = false, lastSize = "", attached = null, attaching = false, pendingOutput = [];
 let pc, stream, muted = false, micMuted = false, connecting = false, previewing = false;
 let seenProposals = null, speechQueue = Promise.resolve(), verifying = null, dismissed = null, held = false, errorSource = null, focusRequest = 0;
+// Returning to the login form: Firefox rejects this page's pending requests as soon as that navigation starts (e.g. the
+// logout reply when the socket's 1008 close arrives first), so errors after it would flash just before the page goes.
+let leaving = false;
+const leave = () => { leaving = true; location.replace("/"); };
 // Banners never cover decision cards (those sit above them). A backend banner follows assistant.error and an
 // attachment banner clears once the terminal is attached, so stale errors do not linger.
-const fail = (error, source = "local") => { $("error-text").textContent = error.message; $("error").hidden = false; errorSource = source; };
+const fail = (error, source = "local") => { if (leaving) return; $("error-text").textContent = error.message; $("error").hidden = false; errorSource = source; };
 const clearError = (source) => { if (errorSource === source) { $("error").hidden = true; errorSource = null; } };
 const keyboard = () => {
   $("claim").textContent = owner ? "交还键盘" : "接管键盘";
@@ -319,7 +323,7 @@ function connectTerminal() {
   };
   ws.onclose = ({ code }) => {
     // 1008: this login was ended (logout in any tab, or expiry); reconnecting cannot succeed, so return to the login form.
-    if (code === 1008) { location.replace("/"); return; }
+    if (code === 1008) { leave(); return; }
     owner = false; held = false; snapshotReady = false; current = null; keyboard();
     attached = null; attaching = false; attending = false;
     $("terminal-status").textContent = code === 1013
@@ -328,7 +332,7 @@ function connectTerminal() {
     // A refused upgrade (403 after a backend restart or expiry) closes without 1008; ask the API whether the login
     // still exists so the page returns to the login form instead of reconnecting forever.
     setTimeout(async () => {
-      try { await api("state"); } catch (error) { if (error.status === 401) { location.replace("/"); return; } }
+      try { await api("state"); } catch (error) { if (error.status === 401) { leave(); return; } }
       connectTerminal();
     }, 1500);
   };
@@ -494,7 +498,7 @@ $("account-menu").onkeydown = (event) => {
   }
 };
 document.addEventListener("pointerdown", (event) => { if (!$("account-menu").hidden && !event.target.closest(".account")) closeAccount(); });
-$("logout").onclick = action(async () => { closeAccount(); await api("logout", {}); location.replace("/"); });
+$("logout").onclick = action(async () => { closeAccount(); await api("logout", {}); leave(); });
 $("open-settings").onclick = () => { closeAccount(); openSettings(); };
 // The button ships disabled so an early Enter cannot natively GET-submit the form before this handler exists.
 $("login-submit").disabled = false; $("login-submit").removeAttribute("title");

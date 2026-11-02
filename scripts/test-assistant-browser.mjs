@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { chromium } from "@playwright/test";
+import { chromium, firefox } from "@playwright/test";
 import { startAssistant } from "../packages/live-assistant/src/server.mjs";
 import { defaultAdapters } from "../packages/live-assistant/src/harness.mjs";
 
@@ -546,10 +546,41 @@ try {
   assert.equal(await page.evaluate(async () => (await fetch("/api/state")).status), 401);
   assert.ok(app.sessions.list().some((session) => session.state === "running"), "logout leaves sessions running");
   await tab.close();
+  // Logout in Firefox: the socket's 1008 close can beat the logout reply, and Firefox rejects that pending request as
+  // soon as the page heads back to the login form; the leaving page must not flash it as an error banner.
+  {
+    const gecko = await firefox.launch({ headless: true });
+    try {
+      const fox = await gecko.newPage();
+      const banners = [];
+      fox.on("pageerror", (error) => errors.push(error.message));
+      fox.on("console", (message) => { if (message.text().startsWith("banner: ")) banners.push(message.text()); });
+      await fox.goto(app.origin);
+      await fox.locator("#password").fill(password);
+      await fox.locator("#password").press("Enter");
+      await fox.locator("#workspace").waitFor({ state: "visible" });
+      await fox.waitForFunction(() => ws?.readyState === WebSocket.OPEN);
+      // The banner may show for only a few milliseconds before the login form replaces the page.
+      await fox.evaluate(() => new MutationObserver(() => {
+        if (!document.querySelector("#error").hidden) console.log(`banner: ${document.querySelector("#error-text").textContent}`);
+      }).observe(document.querySelector("#error"), { attributes: true }));
+      // The backend handles logout at once; holding its reply makes the 1008 close always arrive first.
+      await fox.route("**/api/logout", async (route) => {
+        const response = await route.fetch();
+        await new Promise((done) => setTimeout(done, 300));
+        await route.fulfill({ response }).catch(() => {});
+      });
+      await fox.locator("#avatar").click();
+      await fox.locator("#logout").click();
+      await fox.locator("#login").waitFor({ state: "visible" });
+      assert.equal(await fox.evaluate(async () => (await fetch("/api/state")).status), 401);
+      assert.deepEqual(banners, []);
+    } finally { await gecko.close(); }
+  }
   const fixture = join(directory, "browser-result.json");
   await writeFile(fixture, JSON.stringify({ tabs: 2, closedTab: true, reloadPreservedPids: true, narrowLayout: true, errors }));
   assert.deepEqual(errors, []);
-  console.log("Independent browser workspace passed: single entry on slow or repeated login, terminal reconnect clears its banner and a lost login returns to the login form, voice control states, missing harness marking, harness menu with create dialog with default/custom directory, terminal auto-fit inside its frame, voice page switch, native typing, numbered decision cards, key cards, hand-back to the terminal with focus, hidden confirmations while the terminal has focus, tab click focuses its terminal, file upload/download, multiple tabs, tab color and note, tab wrapping, tab close, reload persistence, narrow layout, fullscreen TUI, mouse, select-and-copy, screen copy, paste and control keys, focus on new session, spoken turns in order, one top bar with commands and server status, same-origin icons, avatar menu with settings dialog (save, persist, invalid value, restore defaults), logout across tabs.");
+  console.log("Independent browser workspace passed: single entry on slow or repeated login, terminal reconnect clears its banner and a lost login returns to the login form, voice control states, missing harness marking, harness menu with create dialog with default/custom directory, terminal auto-fit inside its frame, voice page switch, native typing, numbered decision cards, key cards, hand-back to the terminal with focus, hidden confirmations while the terminal has focus, tab click focuses its terminal, file upload/download, multiple tabs, tab color and note, tab wrapping, tab close, reload persistence, narrow layout, fullscreen TUI, mouse, select-and-copy, screen copy, paste and control keys, focus on new session, spoken turns in order, one top bar with commands and server status, same-origin icons, avatar menu with settings dialog (save, persist, invalid value, restore defaults), logout across tabs, Firefox logout without a flashed error banner.");
 } catch (error) {
   console.error(JSON.stringify({
     terminals: app.sessions.list().map((session) => ({ id: session.id, name: session.name, state: session.state, exitCode: session.exitCode, text: app.sessions.history(session.id) })),
