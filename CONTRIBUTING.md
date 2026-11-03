@@ -28,7 +28,9 @@ deployments and is never required for a pull request. See the [README](README.md
   validation, and as few runtime dependencies as possible. Discuss new dependencies in an issue first.
 - Behavior changes need tests (`tests/*.test.mjs` or `scripts/test-assistant-browser.mjs`). Bug fixes should start with a
   failing test where practical. Do not mock away the behavior under test.
-- Code, comments, commit messages and logs are in English. The web UI and voice prompts are currently Chinese.
+- Code, comments, commit messages and logs are in English. Web UI text lives in `packages/live-assistant/public/i18n.js`
+  in Chinese and English: give new markup a `data-i18n*` key and add every key to both dictionaries (`npm run test:browser`
+  checks that they match). Spoken text follows the separate `voiceLanguage` setting, not the page language.
 - Documentation is bilingual: `README.md` / `README.zh-CN.md` and `docs/*.md` / `docs/*.zh-CN.md`. When behavior or
   configuration changes, update both languages; if you can write only one, say so in the pull request and we will help.
 - Azure AI Foundry is accessed only through Entra ID (`AzureCliCredential`); do not add API key authentication.

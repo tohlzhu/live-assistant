@@ -39,6 +39,7 @@ button::before, .voice-head h2::before, .logo::before { content: none; flex: non
 #create { --icon: url("icons.svg#plus"); } #claim { --icon: url("icons.svg#keyboard"); } #select { --icon: url("icons.svg#select"); } #copy-screen { --icon: url("icons.svg#copy"); }
 #upload { --icon: url("icons.svg#upload"); } #download { --icon: url("icons.svg#download"); } #wait { --icon: url("icons.svg#hourglass"); } #terminate { --icon: url("icons.svg#stop"); }
 #harness-menu button { --icon: url("icons.svg#terminal"); } #open-settings { --icon: url("icons.svg#gear"); } #logout { --icon: url("icons.svg#sign-out"); }
+#account-menu [role="menuitemradio"] { --icon: url("icons.svg#check"); } #account-menu [aria-checked="false"]::before { visibility: hidden; }
 #connect { --icon: url("icons.svg#broadcast"); } #mic { --icon: url("icons.svg#mic"); } #mic[aria-checked="false"] { --icon: url("icons.svg#mic-off"); }
 #mute { --icon: url("icons.svg#unmute"); } #mute[aria-checked="false"] { --icon: url("icons.svg#mute"); }
 #request button { --icon: url("icons.svg#send"); } #verify > button:first-of-type { --icon: url("icons.svg#checklist"); } .tab-close { --icon: url("icons.svg#x"); }
@@ -66,6 +67,11 @@ code { font-family: var(--mono); font-size: 85%; background: var(--neutral-muted
 .login-box label { margin: 0 0 16px; font-weight: 400; }
 #login-submit { width: 100%; }
 #login .hint { margin: 16px 0 0; padding: 16px; border: 1px solid var(--border); border-radius: 6px; }
+/* The display language can be picked before signing in; each name is written in its own language. */
+#login .languages { display: flex; justify-content: center; gap: 4px; margin-top: 12px; }
+#login .languages button { min-height: 28px; padding: 0 10px; font-size: 12px; font-weight: 400; color: var(--fg-muted); background: transparent; border-color: transparent; box-shadow: none; }
+#login .languages button:hover { background: var(--neutral-hover); }
+#login .languages button[aria-pressed="true"] { color: var(--accent); background: var(--accent-subtle); border-color: var(--accent-muted); }
 main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; }
 /* One bar across both columns: brand, terminal commands, then host load and the account menu at the far right. */
 .app-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; min-width: 0; padding: 12px 16px; background: var(--subtle); border-bottom: 1px solid var(--border); }
@@ -90,6 +96,9 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; grid-template
 #harness-menu button, #account-menu button { justify-content: flex-start; padding: 0 8px; font-weight: 400; background: transparent; border-color: transparent; box-shadow: none; }
 #harness-menu button::before, #account-menu button::before { color: var(--fg-muted); }
 #harness-menu button:hover:not(:disabled), #account-menu button:hover { background: var(--neutral-hover); }
+.menu-group { display: flex; flex-direction: column; gap: 2px; }
+.menu-label { padding: 2px 8px 0; font-size: 12px; color: var(--fg-muted); }
+.menu-separator { height: 1px; margin: 4px -8px; background: var(--border-muted); }
 #server-stats { flex: none; display: flex; gap: 14px; padding: 4px 12px; cursor: default; font-size: 12px; color: var(--fg-muted); background: var(--canvas); border: 1px solid var(--border-muted); border-radius: 6px; }
 .stat { display: inline-grid; grid-template-columns: auto auto; column-gap: 6px; row-gap: 3px; align-items: baseline; line-height: 1.3; }
 .stat-value { color: var(--fg); font-variant-numeric: tabular-nums; font-weight: 600; }

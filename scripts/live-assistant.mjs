@@ -12,6 +12,7 @@ const app = await startAssistant({
   ...(process.env.LIVE_ASSISTANT_UPLOAD_MB ? { uploadLimit: Number(process.env.LIVE_ASSISTANT_UPLOAD_MB) * 1024 * 1024 } : {}),
   ...(process.env.LIVE_ASSISTANT_VERIFY_TIMEOUT ? { verifyTimeout: Number(process.env.LIVE_ASSISTANT_VERIFY_TIMEOUT) * 1000 } : {}),
   ...(process.env.LIVE_ASSISTANT_ORIGIN ? { origin: process.env.LIVE_ASSISTANT_ORIGIN } : {}),
+  ...(process.env.LIVE_ASSISTANT_VOICE_LANGUAGE ? { voiceLanguage: process.env.LIVE_ASSISTANT_VOICE_LANGUAGE } : {}),
   harness: {
     dshProfile: process.env.LIVE_ASSISTANT_DSH_PROFILE ?? "dsh-tui",
     dshToken: process.env.LIVE_ASSISTANT_DSH_FOUNDRY_TOKEN === "1",

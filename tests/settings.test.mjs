@@ -16,7 +16,7 @@ const shell = { argv: ["/bin/bash", "--noprofile", "--norc", "-i"] };
 const endpoint = "https://fixture.openai.azure.com/";
 const pause = (ms = 20) => new Promise((done) => setTimeout(done, ms));
 const defaults = (workspace) => ({
-  subscription: "", liveEndpoint: "", liveDeployment: "gpt-live-1", liveVoice: "marin", ttsEndpoint: "", ttsDeployment: "gpt-4o-mini-tts", ttsVoice: "alloy",
+  voiceLanguage: "zh-CN", subscription: "", liveEndpoint: "", liveDeployment: "gpt-live-1", liveVoice: "marin", ttsEndpoint: "", ttsDeployment: "gpt-4o-mini-tts", ttsVoice: "alloy",
   intentEndpoint: "", intentDeployment: "gpt-6.1-sol", intentEffort: "low", workspace, roots: [], dshProfile: "dsh-tui", dshToken: false, hooks: true,
   verifyTimeout: 600, uploadMb: 2048,
 });
@@ -38,6 +38,7 @@ test("saved settings override the defaults, null or the default value removes th
   assert.throws(() => settings.merge({ liveEndpoint: "https://example.com/" }), { status: 400, message: /^liveEndpoint: Use the Foundry HTTPS root/ });
   assert.throws(() => settings.merge({ intentEndpoint: "http://intent.openai.azure.com/" }), { status: 400, message: /^intentEndpoint: Use the Foundry HTTPS root/ });
   assert.throws(() => settings.merge({ password: "x" }), { status: 400 });
+  assert.throws(() => settings.merge({ voiceLanguage: "fr" }), { status: 400, message: /^voiceLanguage: Set LIVE_ASSISTANT_VOICE_LANGUAGE to zh-CN or en/ });
   assert.throws(() => settings.merge({ roots: ["relative"] }), { message: /roots\.0: Use an absolute path/ });
   await writeFile(join(directory, "settings.json"), JSON.stringify({ ttsVoice: "nova", intentEffort: "extreme" }));
   const restarted = new Settings(directory, defaults(directory));
@@ -88,13 +89,13 @@ async function fakeLive(t) {
   return { transport, creates, commands };
 }
 
-test("page settings apply without a restart: Live endpoint and voice, speech voice, failures change nothing, saved values survive restarts", async (t) => {
+test("page settings apply without a restart: Live endpoint, voice and language, speech voice, failures change nothing, saved values survive restarts", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "live-settings-http-"));
   const fake = await fakeLive(t);
   const spoken = [];
   const options = {
     directory, workspace: join(directory, "workspace"), password, adapters: { shell }, liveTransport: fake.transport,
-    speak: async (text, { voice } = {}) => { spoken.push([text, voice]); return { type: "audio/mpeg", data: Buffer.from("ID3fixture") }; },
+    speak: async (text, { voice, language } = {}) => { spoken.push([text, voice, language]); return { type: "audio/mpeg", data: Buffer.from("ID3fixture") }; },
   };
   let app = await startAssistant(options);
   t.after(async () => {
@@ -142,6 +143,7 @@ test("page settings apply without a restart: Live endpoint and voice, speech voi
   assert.equal((await page.post("/api/live/open", { sdp: "v=0\noffer" })).status, 200);
   assert.ok(fake.creates[0].url.startsWith("https://fixture.openai.azure.com/"));
   assert.deepEqual(fake.creates[0].body.session.audio, { output: { voice: "cedar" } });
+  assert.match(fake.creates[0].body.session.instructions, /Speak Mandarin Chinese by default/);
   const moved = await page.post("/api/settings", { values: { liveEndpoint: "https://other.openai.azure.com/" } });
   assert.equal(moved.status, 409);
   assert.match((await moved.json()).error, /Disconnect voice before changing the Foundry endpoint/);
@@ -156,28 +158,42 @@ test("page settings apply without a restart: Live endpoint and voice, speech voi
   assert.equal((await page.post("/api/live/preview", {})).status, 409);
   assert.equal((await page.post("/api/live/open", { sdp: "v=0\noffer", voice: "verse", preview: true })).status, 200);
   assert.deepEqual(fake.creates[1].body.session.audio, { output: { voice: "verse" } });
-  assert.match(fake.creates[1].body.session.instructions, /voice preview/);
+  assert.match(fake.creates[1].body.session.instructions, /voice preview.*natural Mandarin/);
   await pause(50);
   assert.equal(fake.commands.filter((event) => event.type === "session.commentary.append").length, 0);
   assert.equal((await page.post("/api/live/preview", {})).status, 200);
   assert.match(JSON.stringify(fake.commands.filter((event) => event.type === "session.commentary.append")), /这是我现在的声音/);
   assert.equal((await page.state()).assistant.live.preview, true);
   assert.equal((await page.post("/api/live/close", {})).status, 200);
+  // A preview may try an unsaved language; a conversation cannot pick one.
+  assert.equal((await page.post("/api/live/open", { sdp: "v=0\noffer", language: "en" })).status, 400);
+  assert.equal((await page.post("/api/live/open", { sdp: "v=0\noffer", preview: true, language: "en" })).status, 200);
+  assert.match(fake.creates[2].body.session.instructions, /voice preview.*natural English/);
+  assert.equal((await page.post("/api/live/preview", {})).status, 200);
+  assert.match(JSON.stringify(fake.commands.filter((event) => event.type === "session.commentary.append").at(-1)), /This is how I sound now/);
+  assert.equal((await page.post("/api/live/close", {})).status, 200);
   assert.equal((await page.post("/api/live/open", { sdp: "v=0\noffer" })).status, 200);
-  assert.deepEqual(fake.creates[2].body.session.audio, { output: { voice: "ash" } });
-  assert.doesNotMatch(fake.creates[2].body.session.instructions, /voice preview/);
+  assert.deepEqual(fake.creates[3].body.session.audio, { output: { voice: "ash" } });
+  assert.doesNotMatch(fake.creates[3].body.session.instructions, /voice preview/);
+  assert.match(fake.creates[3].body.session.instructions, /Speak Mandarin Chinese by default/);
+  assert.equal((await page.post("/api/live/close", {})).status, 200);
+  // The voice language applies to the next conversation.
+  assert.equal((await page.post("/api/settings", { values: { voiceLanguage: "en" } })).status, 200);
+  assert.equal((await page.post("/api/live/open", { sdp: "v=0\noffer" })).status, 200);
+  assert.match(fake.creates[4].body.session.instructions, /Speak English by default.*for example proposal 3/);
   assert.equal((await page.post("/api/live/close", {})).status, 200);
 
   assert.equal((await page.post("/api/speech", { text: "示例", voice: "shimmer" })).status, 200);
-  assert.equal((await page.post("/api/speech", { text: "提醒" })).status, 200);
-  assert.deepEqual(spoken, [["示例", "shimmer"], ["提醒", undefined]]);
+  assert.equal((await page.post("/api/speech", { text: "Reminder", language: "en" })).status, 200);
+  assert.equal((await page.post("/api/speech", { text: "Reminder", language: "fr" })).status, 400);
+  assert.deepEqual(spoken, [["示例", "shimmer", undefined], ["Reminder", undefined, "en"]]);
 
   // Saved values survive a restart; saved values that no longer apply fall back to the defaults with a fault.
   await app.close();
   app = await startAssistant(options);
   page = await session();
   state = await page.state();
-  assert.deepEqual([state.settings.values.liveEndpoint, state.settings.values.liveVoice, state.settings.values.ttsVoice], [endpoint, "ash", "nova"]);
+  assert.deepEqual([state.settings.values.liveEndpoint, state.settings.values.liveVoice, state.settings.values.ttsVoice, state.settings.values.voiceLanguage], [endpoint, "ash", "nova", "en"]);
   await app.close();
   await rm(join(directory, "extra"), { recursive: true });
   app = await startAssistant(options);

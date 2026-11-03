@@ -17,9 +17,12 @@ const path = z.string().trim().min(1).max(4096).refine(isAbsolute, "Use an absol
 const endpoint = z.union([z.literal(""), z.string().trim().max(200).refine((value) => {
   try { return Boolean(foundryOrigin(value)); } catch { return false; }
 }, "Use the Foundry HTTPS root, such as https://<resource>.openai.azure.com/")]);
+// The voice assistant's default language, separate from the page's display language (chosen per browser).
+export const voiceLanguage = z.enum(["zh-CN", "en"], { message: "Set LIVE_ASSISTANT_VOICE_LANGUAGE to zh-CN or en" });
 // Everything except the login password can be changed from the page; the password stays in the process environment.
 // Each model names its own Foundry resource, so they may sit in different regions; one subscription selects the az login tenant.
 export const settingsSchema = z.strictObject({
+  voiceLanguage,
   subscription: z.string().trim().max(200),
   liveEndpoint: endpoint,
   liveDeployment: name,
