@@ -1,4 +1,4 @@
-/* global Terminal, FitAddon */
+/* global Terminal, FitAddon, messages, t, lang */
 "use strict";
 const $ = (id) => document.getElementById(id);
 let focusOnAttach = null, ws, terminal, fit, focused = localStorage.getItem("live-focus"), owner = false, current, snapshotReady = false, lastSize = "", attached = null, attaching = false, pendingOutput = [];
@@ -13,7 +13,7 @@ const leave = () => { leaving = true; location.replace("/"); };
 const fail = (error, source = "local") => { if (leaving) return; $("error-text").textContent = error.message; $("error").hidden = false; errorSource = source; };
 const clearError = (source) => { if (errorSource === source) { $("error").hidden = true; errorSource = null; } };
 const keyboard = () => {
-  $("claim").textContent = owner ? "交还键盘" : "接管键盘";
+  $("claim").textContent = t(owner ? "keyboard.release" : "keyboard.claim");
   $("claim").setAttribute("aria-pressed", String(owner));
 };
 // One-shot "select and copy": the next drag only selects text and copies on release. While it is armed every mouse
@@ -23,7 +23,7 @@ const selectMode = (on) => {
   selecting = on; selectFrom = null;
   $("select").setAttribute("aria-pressed", String(on));
   $("terminal").classList.toggle("selecting", on);
-  if (on) notice("拖动选择文本，松开即复制；期间 harness 收不到鼠标。Esc 取消。", false, 0);
+  if (on) notice(t("select.armed"), false, 0);
   else if (copyTimer === null) $("copy-status").hidden = true;
 };
 function notice(text, failed = false, ms = 3000) {
@@ -40,7 +40,7 @@ async function copyText(text) {
     document.body.append(area); area.select();
     const done = document.execCommand("copy");
     area.remove(); terminal?.focus();
-    if (!done) throw new Error("浏览器不允许写入剪贴板");
+    if (!done) throw new Error(t("copy.denied"));
   }
 }
 const lineCount = (text) => text.split("\n").length;
@@ -67,8 +67,8 @@ for (const type of guarded) window.addEventListener(type, (event) => {
     selectTo(cell(event));
     const text = terminal.getSelection();
     selectMode(false);
-    if (!text.trim()) { notice("没有选中文本"); return; }
-    copyText(text).then(() => notice(`已复制 ${lineCount(text)} 行、${text.length} 个字符`), (error) => notice(`复制失败：${error.message}`, true));
+    if (!text.trim()) { notice(t("copy.empty")); return; }
+    copyText(text).then(() => notice(t("copy.done", { lines: lineCount(text), chars: text.length })), (error) => notice(t("copy.failed", { error: error.message }), true));
   }
 }, { capture: true, passive: false });
 window.addEventListener("keydown", (event) => {
@@ -87,7 +87,7 @@ async function api(path, data) {
 }
 const action = (fn) => async (event) => { event?.preventDefault(); try { await fn(); } catch (error) { fail(error); } };
 function send(data) {
-  if (ws?.readyState !== WebSocket.OPEN) throw new Error("终端已断线；请等待重新附着，不会重发键盘输入。");
+  if (ws?.readyState !== WebSocket.OPEN) throw new Error(t("terminal.disconnected"));
   ws.send(JSON.stringify(data));
 }
 // Focuses the terminal of `id`, switching to it first; a switch focuses once its snapshot is shown.
@@ -115,7 +115,15 @@ function attach(id) {
   send({ type: "attach", sessionId: id });
   void api("focus", { sessionId: id }).catch(fail);
 }
-const kindLabels = { input: "代输入", keys: "按键", prompt: "终端确认", permission: "工具权限", create: "新建 session", cancel: "终止 session", close: "关闭 tab", verify: "独立验收" };
+const kindLabel = (kind, language = lang) => `kind.${kind}` in messages.en ? t(`kind.${kind}`, {}, language) : kind;
+// The backend composes create and close previews in Chinese for the voice model; the page words them in its own language.
+// A create task is shown redacted, as the backend's preview is.
+function preview(proposal, language = lang) {
+  if (proposal.kind === "create" && typeof proposal.task === "string") return t("proposal.create", { task: proposal.task || t("proposal.empty", {}, language), cwd: proposal.cwd }, language);
+  const session = proposal.kind === "close" && current?.sessions.find((entry) => entry.id === proposal.sessionId);
+  if (session) return t(session.state === "running" ? "tab.terminateClose" : "tab.close", {}, language);
+  return proposal.preview;
+}
 // Keyed rendering: existing nodes are updated in place so focus, selection and scroll survive state pushes.
 function reconcile(container, items, key, create, update) {
   const existing = new Map([...container.children].map((node) => [node.dataset.key, node]));
@@ -138,8 +146,8 @@ function render(state) {
     item.onclick = action(() => { closeMenu(); openCreate(item.dataset.key); });
     return item;
   }, (item, harness) => {
-    item.textContent = harness.available ? harness.name : `${harness.name}（未找到）`;
-    item.title = harness.available ? harness.path : `未在 PATH 中找到 ${harness.command}`;
+    item.textContent = harness.available ? harness.name : t("harness.missing", { name: harness.name });
+    item.title = harness.available ? harness.path : t("harness.missingTitle", { command: harness.command });
     item.disabled = !harness.available;
   });
   $("create").disabled = !state.harnesses.some((harness) => harness.available);
@@ -147,7 +155,7 @@ function render(state) {
   const waiting = state.proposals.filter((proposal) => proposal.state === "pending");
   reconcile($("tabs"), state.sessions, (session) => session.id, (session) => {
     const tab = document.createElement("div"); tab.className = "tab";
-    const dot = document.createElement("button"); dot.className = "tab-color"; dot.title = "选择 tab 颜色";
+    const dot = document.createElement("button"); dot.className = "tab-color";
     dot.setAttribute("aria-haspopup", "menu");
     dot.onclick = () => openColors(session.id, dot);
     const button = document.createElement("button"); button.className = "tab-label";
@@ -171,41 +179,44 @@ function render(state) {
     // An open tab is normally running, so only a different lifecycle state is spelled out.
     button.querySelector(".tab-name").textContent = session.name;
     button.querySelector(".tab-note").textContent = session.note ?? "";
-    button.querySelector(".tab-state").textContent = `${session.state === "running" ? "" : ` · ${session.state}`}${count ? ` · ${count} 待确认` : ""}`;
-    button.title = `${session.cwd}\n双击${session.note ? "修改" : "添加"}备注`;
+    button.querySelector(".tab-state").textContent = `${session.state === "running" ? "" : ` · ${session.state}`}${count ? ` · ${t("tab.pending", { count })}` : ""}`;
+    button.title = `${session.cwd}\n${t(session.note ? "tab.editNote" : "tab.addNote")}`;
     if (session.color) tab.dataset.color = session.color; else delete tab.dataset.color;
-    tab.querySelector(".tab-color").setAttribute("aria-label", `tab 颜色：${colorNames[session.color ?? "none"]}`);
+    tab.querySelector(".tab-color").title = t("tab.color");
+    tab.querySelector(".tab-color").setAttribute("aria-label", t("tab.colorLabel", { color: t(`color.${session.color ?? "none"}`) }));
     button.setAttribute("aria-selected", String(session.id === focused));
     tab.classList.toggle("selected", session.id === focused);
     const close = tab.querySelector(".tab-close");
-    close.title = session.state === "terminated" ? "关闭 tab" : "终止进程并关闭 tab";
-    close.setAttribute("aria-label", `${close.title}：${session.name}`);
+    close.title = t(session.state === "terminated" ? "tab.close" : "tab.terminateClose");
+    close.setAttribute("aria-label", t("tab.closeLabel", { action: close.title, name: session.name }));
   });
   if (!state.sessions.some((session) => session.id === focused)) focused = state.sessions[0]?.id ?? null;
   const selected = state.sessions.find((session) => session.id === focused);
   if (selected?.color) $("terminal").dataset.color = selected.color; else delete $("terminal").dataset.color;
   if (verifying && state.sessions.some((session) => session.verification?.operationId === verifying)) verifying = null;
   $("verification").textContent = verifying
-    ? "独立验收进行中……"
+    ? t("verify.running")
     : selected?.verification
-      ? `独立验收 ${selected.verification.runId.slice(0, 8)}：${selected.verification.state} · 退出码 ${selected.verification.exitCode ?? "未知"}${selected.verification.reason ? ` · ${selected.verification.reason}` : ""}；仅证明该次命令。`
-      : "没有独立验收结果；终端文字“完成”不等于任务验收通过。";
+      ? t("verify.result", { run: selected.verification.runId.slice(0, 8), state: selected.verification.state, code: selected.verification.exitCode ?? t("common.unknown"), reason: selected.verification.reason ? ` · ${selected.verification.reason}` : "" })
+      : t("verify.none");
   $("verify-cancel").hidden = !verifying;
   // Command output is untrusted text: render with textContent and only touch it on change so an open <details> keeps its scroll.
-  const output = !verifying && selected?.verification ? selected.verification.output || "（无输出）" : null;
+  const output = !verifying && selected?.verification ? selected.verification.output || t("verify.noOutput") : null;
   $("verification-details").hidden = output === null;
   if (output !== null && $("verification-output").textContent !== output) $("verification-output").textContent = output;
-  $("terminal-status").textContent = selected ? `${selected.harness} / ${selected.id.slice(0, 8)} · ${selected.cwd} · ${selected.state} · ${selected.currentRun ? `任务 ${selected.currentRun.id.slice(0, 8)} / ${selected.currentRun.state}` : "原生终端 / 未关联托管任务"} · ${owner ? "你拥有键盘：打字会作废该终端的待确认输入" : held ? "另一页面拥有键盘；打字即可接管" : "未接管：打字即可接管键盘，鼠标移动不算接管"} · 退出码 ${selected.exitCode ?? "未知"}` : "选择或新建一个终端。关闭页面不会结束进程。";
+  // Without a session the line is static text, which i18n.js retranslates by its key.
+  if (selected) delete $("terminal-status").dataset.i18n; else $("terminal-status").dataset.i18n = "status.empty";
+  $("terminal-status").textContent = selected ? `${selected.harness} / ${selected.id.slice(0, 8)} · ${selected.cwd} · ${selected.state} · ${selected.currentRun ? t("status.run", { id: selected.currentRun.id.slice(0, 8), state: selected.currentRun.state }) : t("status.native")} · ${t(owner ? "status.owner" : held ? "status.held" : "status.free")} · ${t("status.exit", { code: selected.exitCode ?? t("common.unknown") })}` : t("status.empty");
   voiceControls();
   const live = state.assistant.live;
   // Turns are shown in spoken order, so the latest exchange of both sides stays in view.
-  const turns = live.turns ?? [], box = $("transcript"), key = JSON.stringify(turns);
+  const turns = live.turns ?? [], box = $("transcript"), key = JSON.stringify([lang, turns]);
   if (box.dataset.key !== key) {
     const following = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
     box.replaceChildren(...turns.map(({ role, text }) => {
       const line = document.createElement("p");
       line.className = role;
-      line.textContent = `${role === "user" ? "你" : "助手"}：${text.trim()}`;
+      line.textContent = t(role === "user" ? "transcript.user" : "transcript.assistant", { text: text.trim() });
       return line;
     }));
     box.dataset.key = key;
@@ -214,28 +225,32 @@ function render(state) {
   }
   const usage = state.assistant.usage;
   $("usage").textContent = [
-    usage.live && state.assistant.live.state !== "disabled" ? `语音本月 ${usage.live.seconds.toFixed(1)} 秒 / ${usage.live.connections} 次连接` : "未配置 Foundry；终端仍可用。",
-    usage.interpreter ? `意图解析本月 ${usage.interpreter.requests} 次 / ${usage.interpreter.tokens} tokens` : "",
+    usage.live && state.assistant.live.state !== "disabled" ? t("usage.live", { seconds: usage.live.seconds.toFixed(1), connections: usage.live.connections }) : t("usage.none"),
+    usage.interpreter ? t("usage.intent", { requests: usage.interpreter.requests, tokens: usage.interpreter.tokens }) : "",
   ].filter(Boolean).join("\n");
   $("speech").disabled = !state.speech;
   reconcile($("decisions"), waiting, (proposal) => proposal.id, card, (node, proposal) => {
+    const target = proposal.sessionId ? (proposal.name ?? proposal.sessionId.slice(0, 8)) : proposal.harness;
+    node.querySelector("strong").textContent = `${kindLabel(proposal.kind)} · ${target}${proposal.kind === "prompt" ? t("card.screen") : ""}`;
     node.querySelector(".note").hidden = !proposal.changedDuringInterpretation;
+    const content = preview(proposal);
+    if (node.querySelector("pre").textContent !== content) node.querySelector("pre").textContent = content;
   });
   const grants = state.sessions.flatMap((session) => (session.grants ?? []).map((grant) => ({ session, grant })));
   reconcile($("grants"), grants, ({ grant }) => grant.id, ({ session, grant }) => {
     const row = document.createElement("div"); row.className = "grant";
     const text = document.createElement("span");
-    const button = document.createElement("button"); button.textContent = "撤销";
+    const button = document.createElement("button"); button.dataset.i18n = "grant.revoke"; button.textContent = t("grant.revoke");
     button.onclick = action(() => api("revoke", { sessionId: session.id, grantId: grant.id }));
     row.append(text, button);
     return row;
   }, (row, { session, grant }) => {
-    row.querySelector("span").textContent = `始终允许 · ${session.name} · ${kindLabels[grant.kind]} · 已使用 ${grant.uses} 次：${grant.label}`;
+    row.querySelector("span").textContent = t("grant.label", { session: session.name, kind: kindLabel(grant.kind), uses: grant.uses, label: grant.label });
   });
   announce(waiting);
   keyboard();
   if (state.assistant.error && state.assistant.error !== dismissed) {
-    const hint = live.error === "acknowledgement-unknown" ? "\n语音通道确认超时，已停止向语音模型追加上下文：请点“断开语音”后重新连接。终端和提案卡片不受影响。" : "";
+    const hint = live.error === "acknowledgement-unknown" ? `\n${t("live.acknowledgementUnknown")}` : "";
     fail(new Error(state.assistant.error + hint), "backend");
   } else if (!state.assistant.error) clearError("backend");
 }
@@ -243,18 +258,17 @@ function card(proposal) {
   const container = document.createElement("div"); container.className = "decision";
   const heading = document.createElement("header");
   const number = document.createElement("span"); number.className = "number"; number.textContent = `${proposal.number}.`;
+  // The title and preview are filled in by render(), which also rewords them when the language changes.
   const title = document.createElement("strong");
-  const target = proposal.sessionId ? (proposal.name ?? proposal.sessionId.slice(0, 8)) : proposal.harness;
-  title.textContent = `${kindLabels[proposal.kind] ?? proposal.kind} · ${target}${proposal.kind === "prompt" ? "（屏幕识别，请核对终端）" : ""}`;
   heading.append(number, title);
-  const note = document.createElement("p"); note.className = "note"; note.textContent = "解析期间你操作过该终端，请确认这仍是你要的输入。";
-  const content = document.createElement("pre"); content.textContent = proposal.preview;
+  const note = document.createElement("p"); note.className = "note"; note.dataset.i18n = "card.changed"; note.textContent = t("card.changed");
+  const content = document.createElement("pre");
   container.append(heading, note, content);
-  const buttons = [["批准", true, "once"], ["拒绝", false, "once"]];
-  if (["input", "keys", "prompt", "permission"].includes(proposal.kind)) buttons.push(["始终允许", true, "always"]);
-  if (proposal.kind === "permission") buttons.push(["在终端处理", false, "terminal"]);
+  const buttons = [["card.approve", true, "once"], ["card.reject", false, "once"]];
+  if (["input", "keys", "prompt", "permission"].includes(proposal.kind)) buttons.push(["card.always", true, "always"]);
+  if (proposal.kind === "permission") buttons.push(["card.terminal", false, "terminal"]);
   for (const [label, allowed, mode] of buttons) {
-    const button = document.createElement("button"); button.textContent = label;
+    const button = document.createElement("button"); button.dataset.i18n = label; button.textContent = t(label);
     button.onclick = action(async () => {
       for (const node of container.querySelectorAll("button")) node.disabled = true;
       try { await api("decision", { proposalId: proposal.id, allowed, mode, operationId: crypto.randomUUID() }); }
@@ -266,19 +280,20 @@ function card(proposal) {
   }
   return container;
 }
-// Spoken reminders for proposals that appear while the page is open.
+// Spoken reminders for proposals that appear while the page is open, in the voice assistant's language, not the page's.
 function announce(waiting) {
   const fresh = seenProposals ? waiting.filter((proposal) => !seenProposals.has(proposal.id)) : [];
   seenProposals = new Set(waiting.map((proposal) => proposal.id));
   if (!$("speech").checked || !current.speech) return;
+  const language = current.settings?.values.voiceLanguage ?? lang;
   for (const proposal of fresh) {
-    const target = proposal.sessionId ? (proposal.name ?? "会话") : `新的 ${proposal.harness}`;
-    const text = `第 ${proposal.number} 号待确认：${target}，${kindLabels[proposal.kind] ?? proposal.kind}。${proposal.preview.slice(0, 120)}`;
-    speechQueue = speechQueue.then(() => speak(text)).catch(fail);
+    const target = proposal.sessionId ? (proposal.name ?? t("announce.session", {}, language)) : t("announce.new", { harness: proposal.harness }, language);
+    const text = t("announce.text", { number: proposal.number, target, kind: kindLabel(proposal.kind, language), preview: preview(proposal, language).slice(0, 120) }, language);
+    speechQueue = speechQueue.then(() => speak(text, null, language)).catch(fail);
   }
 }
-async function speak(text, voice) {
-  const response = await fetch("/api/speech", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, ...(voice ? { voice } : {}) }) });
+async function speak(text, voice, language) {
+  const response = await fetch("/api/speech", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, ...(voice ? { voice } : {}), ...(language ? { language } : {}) }) });
   if (!response.ok) throw new Error((await response.json()).error ?? `HTTP ${response.status}`);
   const url = URL.createObjectURL(await response.blob());
   try {
@@ -326,9 +341,8 @@ function connectTerminal() {
     if (code === 1008) { leave(); return; }
     owner = false; held = false; snapshotReady = false; current = null; keyboard();
     attached = null; attaching = false; attending = false;
-    $("terminal-status").textContent = code === 1013
-      ? "输出过快，存在显示缺口；harness 继续执行，正在通过有界快照重新附着。"
-      : "断线：harness 继续执行，正在重新附着；断线期间输出可能有缺口，不会重发输入。";
+    $("terminal-status").dataset.i18n = code === 1013 ? "terminal.gap" : "terminal.lost";
+    $("terminal-status").textContent = t($("terminal-status").dataset.i18n);
     // A refused upgrade (403 after a backend restart or expiry) closes without 1008; ask the API whether the login
     // still exists so the page returns to the login form instead of reconnecting forever.
     setTimeout(async () => {
@@ -337,18 +351,18 @@ function connectTerminal() {
     }, 1500);
   };
   ws.onopen = () => clearError("terminal");
-  ws.onerror = () => fail(new Error("终端连接失败"), "terminal");
+  ws.onerror = () => fail(new Error(t("terminal.failed")), "terminal");
 }
 // Tab color and note: presentation only, stored on the session so every page and reload shows the same.
-const colorNames = { none: "无", blue: "蓝", teal: "青", green: "绿", yellow: "黄", orange: "橙", red: "红", purple: "紫", gray: "灰" };
+const colors = ["none", "blue", "teal", "green", "yellow", "orange", "red", "purple", "gray"];
 let colorTarget = null;
 function openColors(sessionId, anchor) {
   const menu = $("color-menu");
   if (!menu.hidden && colorTarget === sessionId) { closeColors(); return; }
   colorTarget = sessionId;
   const chosen = current?.sessions.find((session) => session.id === sessionId)?.color ?? "none";
-  menu.replaceChildren(...Object.entries(colorNames).map(([color, name]) => {
-    const item = document.createElement("button");
+  menu.replaceChildren(...colors.map((color) => {
+    const item = document.createElement("button"), name = t(`color.${color}`);
     item.type = "button"; item.dataset.color = color; item.title = name;
     item.setAttribute("role", "menuitemradio"); item.setAttribute("aria-label", name); item.setAttribute("aria-checked", String(color === chosen));
     item.onclick = action(async () => { closeColors(); await api("tab", { sessionId, color: color === "none" ? null : color }); });
@@ -373,9 +387,9 @@ function editNote(tab, sessionId) {
   // The double click's first click switched tabs; the note field keeps the keyboard instead of that terminal.
   focusOnAttach = null;
   const label = tab.querySelector(".tab-label"), field = document.createElement("input");
-  field.className = "tab-note-input"; field.maxLength = 40; field.placeholder = "备注，回车保存";
+  field.className = "tab-note-input"; field.maxLength = 40; field.placeholder = t("note.placeholder");
   field.value = current?.sessions.find((session) => session.id === sessionId)?.note ?? "";
-  field.setAttribute("aria-label", "tab 备注");
+  field.setAttribute("aria-label", t("note.label"));
   let done = false;
   const finish = async (save) => {
     if (done) return;
@@ -398,7 +412,9 @@ function stat(id, share, value) {
   node.dataset.level = share >= 0.9 ? "high" : share >= 0.75 ? "warn" : "ok";
 }
 // One tooltip for the whole strip; tmux PIDs help locate or clean up processes from a shell.
-function renderStats({ cpu, cores, load, memory, disk, tmux }) {
+let lastStats = null;
+function renderStats(stats) {
+  const { cpu, cores, load, memory, disk, tmux } = lastStats = stats;
   const used = memory.total - memory.available, diskUsed = disk.total - disk.available;
   stat("stat-cpu", cpu, cpu === null ? "—" : percent(cpu));
   stat("stat-memory", used / memory.total, gib(used));
@@ -408,12 +424,12 @@ function renderStats({ cpu, cores, load, memory, disk, tmux }) {
     return session ? `${session.name ?? session.harness} ${sessionId.slice(0, 8)}` : sessionId.slice(0, 8);
   };
   $("server-stats").title = [
-    `CPU  ${cpu === null ? "—" : percent(cpu)} · ${cores} 核 · 负载 ${load.map((value) => value.toFixed(2)).join(" / ")}（1/5/15 分钟）`,
-    `MEM  已用 ${gib(used)} / 共 ${gib(memory.total)}（${percent(used / memory.total)}），可用 ${gib(memory.available)}`,
-    `DISK 已用 ${gib(diskUsed)} / 共 ${gib(disk.total)}（${percent(diskUsed / disk.total)}），可用 ${gib(disk.available)}（工作区所在磁盘）`,
-    tmux.pid === null ? "tmux 服务未运行" : `tmux 服务 PID ${tmux.pid}`,
+    t("stats.cpu", { cpu: cpu === null ? "—" : percent(cpu), cores, load: load.map((value) => value.toFixed(2)).join(" / ") }),
+    t("stats.memory", { used: gib(used), total: gib(memory.total), share: percent(used / memory.total), available: gib(memory.available) }),
+    t("stats.disk", { used: gib(diskUsed), total: gib(disk.total), share: percent(diskUsed / disk.total), available: gib(disk.available) }),
+    tmux.pid === null ? t("stats.tmuxDown") : t("stats.tmux", { pid: tmux.pid }),
     ...tmux.panes.map((pane) => `  ${label(pane.sessionId)} → PID ${pane.pid}`),
-    "每 5 秒更新",
+    t("stats.refresh"),
   ].join("\n");
 }
 function resize() {
@@ -452,7 +468,7 @@ async function enter() {
   // before attachment they are dropped silently so they cannot mask a real error. Typing still reports it.
   const report = /^(?:\x1b\[<\d+;\d+;\d+[Mm]|\x1b\[M[\s\S]{3}|\x1b\[[IO]|\x1b\[\d+;\d+R|\x1b\[[?>=]?[\d;]*c|\x1b\[\??[\d;]*\$y|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1bP[^\x1b]*\x1b\\)+$/;
   const input = (data, binary = false) => {
-    if (!snapshotReady) { if (!report.test(data)) fail(new Error("终端尚未附着；断线期间输入不会缓存。"), "attach"); return; }
+    if (!snapshotReady) { if (!report.test(data)) fail(new Error(t("terminal.unattached")), "attach"); return; }
     // A chunk never ends between the halves of a surrogate pair, which would reach the PTY as two U+FFFD.
     try {
       for (let offset = 0, end; offset < data.length; offset = end) {
@@ -481,7 +497,7 @@ $("login").onsubmit = action(async () => {
   try { await api("login", { password: $("password").value }); $("password").value = ""; await enter(); }
   finally { loggingIn = false; $("login-submit").disabled = false; }
 });
-// The avatar opens a small account menu: settings and logout.
+// The avatar opens a small account menu: settings, the display language and logout.
 const accountItems = () => [...$("account-menu").querySelectorAll("button")];
 function closeAccount() { $("account-menu").hidden = true; $("avatar").setAttribute("aria-expanded", "false"); }
 $("avatar").onclick = () => {
@@ -500,10 +516,19 @@ $("account-menu").onkeydown = (event) => {
 document.addEventListener("pointerdown", (event) => { if (!$("account-menu").hidden && !event.target.closest(".account")) closeAccount(); });
 $("logout").onclick = action(async () => { closeAccount(); await api("logout", {}); leave(); });
 $("open-settings").onclick = () => { closeAccount(); openSettings(); };
+// i18n.js switches the language on click; picking one from the menu also closes it.
+for (const choice of $("account-menu").querySelectorAll("[data-lang]")) choice.addEventListener("click", () => { closeAccount(); $("avatar").focus(); });
+// Text that i18n.js cannot reach by key is rendered here again in the new language.
+document.addEventListener("live-language", () => {
+  if (current) render(current); else { keyboard(); voiceControls(); }
+  if (lastStats) renderStats(lastStats);
+});
 // The button ships disabled so an early Enter cannot natively GET-submit the form before this handler exists.
 $("login-submit").disabled = false; $("login-submit").removeAttribute("title");
+// The keyboard and voice controls are worded by script; the static markup only holds their Chinese placeholders.
+keyboard(); voiceControls();
 // New sessions start in <workspace>/<harness>-work unless a directory inside an allowed root is chosen.
-// "新建 session" opens a harness menu; picking an entry goes straight to the directory dialog for that harness.
+// The create button opens a harness menu; picking an entry goes straight to the directory dialog for that harness.
 const menuItems = () => [...$("harness-menu").querySelectorAll("button:not(:disabled)")];
 function closeMenu() { $("harness-menu").hidden = true; $("create").setAttribute("aria-expanded", "false"); }
 $("create").onclick = () => {
@@ -523,7 +548,7 @@ document.addEventListener("pointerdown", (event) => { if (!$("harness-menu").hid
 function openCreate(harness) {
   $("create-harness").textContent = harness;
   $("create-default").textContent = `${current.workspace}/${harness}-work`;
-  $("create-roots").textContent = current.roots.join("、");
+  $("create-roots").textContent = current.roots.join(t("list.separator"));
   $("create-form").elements.cwd.value = "default";
   $("create-cwd").disabled = true;
   $("create-dialog").returnValue = "";
@@ -546,14 +571,14 @@ $("create-dialog").onclose = action(async () => {
 });
 // Toggle: claiming supersedes pending assistant input for this terminal; giving it back only drops ownership.
 $("claim").onclick = action(() => {
-  if (!focused) throw new Error("请选择 session");
+  if (!focused) throw new Error(t("session.required"));
   // Giving the keyboard back moves typing to the request box, so it no longer reaches (and reclaims) the terminal.
   if (owner) { send({ type: "release" }); $("request-text").focus(); }
   else { send({ type: "claim" }); terminal.focus(); }
 });
-$("select").onclick = action(() => { if (!focused) throw new Error("请选择 session"); selectMode(!selecting); });
+$("select").onclick = action(() => { if (!focused) throw new Error(t("session.required")); selectMode(!selecting); });
 $("copy-screen").onclick = action(async () => {
-  if (!focused || !terminal) throw new Error("请选择 session");
+  if (!focused || !terminal) throw new Error(t("session.required"));
   // The visible screen only; wrapped rows are joined back into their logical line.
   const buffer = terminal.buffer.active, lines = [];
   for (let row = buffer.viewportY; row < buffer.viewportY + terminal.rows; row++) {
@@ -563,30 +588,30 @@ $("copy-screen").onclick = action(async () => {
     if (line.isWrapped && lines.length) lines[lines.length - 1] += text; else lines.push(text);
   }
   while (lines.length && !lines.at(-1).trim()) lines.pop();
-  if (!lines.length) { notice("屏幕上没有文本"); return; }
-  try { await copyText(lines.join("\n")); notice(`已复制屏幕文本 ${lines.length} 行`); }
-  catch (error) { notice(`复制失败：${error.message}`, true); }
+  if (!lines.length) { notice(t("copy.screenEmpty")); return; }
+  try { await copyText(lines.join("\n")); notice(t("copy.screenDone", { lines: lines.length })); }
+  catch (error) { notice(t("copy.failed", { error: error.message }), true); }
 });
 const bytes = (n) => n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(1)} KiB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(1)} MiB` : `${(n / 1024 ** 3).toFixed(2)} GiB`;
 // Uploads go one by one into the session's current directory; an existing name fails instead of overwriting.
-$("upload").onclick = action(() => { if (!focused) throw new Error("请选择 session"); $("upload-input").click(); });
+$("upload").onclick = action(() => { if (!focused) throw new Error(t("session.required")); $("upload-input").click(); });
 $("upload-input").onchange = action(async () => {
   const files = [...$("upload-input").files], sessionId = focused;
   $("upload-input").value = "";
   for (const file of files) {
-    notice(`正在上传 ${file.name}（${bytes(file.size)}）…`, false, 0);
+    notice(t("upload.progress", { name: file.name, size: bytes(file.size) }), false, 0);
     try {
       const response = await fetch(`/api/upload?${new URLSearchParams({ sessionId, name: file.name })}`, {
         method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file,
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`);
-      notice(`已上传 ${result.path}（${bytes(result.bytes)}）`, false, 6000);
-    } catch (error) { notice(`上传 ${file.name} 失败：${error.message}`, true, 10000); return; }
+      notice(t("upload.done", { path: result.path, size: bytes(result.bytes) }), false, 6000);
+    } catch (error) { notice(t("upload.failed", { name: file.name, error: error.message }), true, 10000); return; }
   }
 });
 $("download").onclick = action(() => {
-  if (!focused) throw new Error("请选择 session");
+  if (!focused) throw new Error(t("session.required"));
   $("download-path").value = ""; $("download-dialog").showModal();
 });
 $("download-dialog").onclose = action(async () => {
@@ -599,25 +624,25 @@ $("download-dialog").onclose = action(async () => {
     const link = document.createElement("a");
     link.href = `/api/download?${query}`; link.download = file.name;
     document.body.append(link); link.click(); link.remove();
-    notice(`开始下载 ${file.path}（${bytes(file.size)}）`, false, 6000);
-  } catch (error) { notice(`下载失败：${error.message}`, true, 10000); }
+    notice(t("download.started", { path: file.path, size: bytes(file.size) }), false, 6000);
+  } catch (error) { notice(t("download.failed", { error: error.message }), true, 10000); }
 });
 $("terminate").onclick = action(async () => {
-  if (!focused) throw new Error("请选择 session");
-  if (window.confirm("终止此 session 的真实进程？tab 会保留，可用 tab 上的 × 关闭。")) await api("terminate", { sessionId: focused, operationId: crypto.randomUUID() });
+  if (!focused) throw new Error(t("session.required"));
+  if (window.confirm(t("terminate.confirm"))) await api("terminate", { sessionId: focused, operationId: crypto.randomUUID() });
 });
 // Interpreting a request waits on the intent model, so show progress and ignore repeat submits until it answers.
 $("request").onsubmit = action(async () => {
   const form = $("request"), text = $("request-text"), button = form.querySelector("button");
   if (form.getAttribute("aria-busy") === "true") return;
-  if (!text.value.trim()) throw new Error("请先输入要交给助手的任务或反馈");
-  form.setAttribute("aria-busy", "true"); text.readOnly = true; button.disabled = true; button.textContent = "正在交给助手…";
+  if (!text.value.trim()) throw new Error(t("request.empty"));
+  form.setAttribute("aria-busy", "true"); text.readOnly = true; button.disabled = true; button.dataset.i18n = "request.sending"; button.textContent = t("request.sending");
   try {
     const { clarification } = await api("request", { text: text.value, sessionId: focused ?? null });
     text.value = "";
-    if (clarification) fail(new Error(`Clarification required: ${clarification}`));
+    if (clarification) fail(new Error(t("request.clarify", { text: clarification })));
   } finally {
-    form.removeAttribute("aria-busy"); text.readOnly = false; button.disabled = false; button.textContent = "交给助手";
+    form.removeAttribute("aria-busy"); text.readOnly = false; button.disabled = false; button.dataset.i18n = "request.submit"; button.textContent = t("request.submit");
   }
 });
 $("request-text").onkeydown = (event) => {
@@ -625,17 +650,17 @@ $("request-text").onkeydown = (event) => {
   event.preventDefault();
   $("request").requestSubmit();
 };
-$("wait").onclick = action(async () => { if (!focused) throw new Error("请选择 session"); await api("wait", { sessionId: focused }); });
+$("wait").onclick = action(async () => { if (!focused) throw new Error(t("session.required")); await api("wait", { sessionId: focused }); });
 $("error-close").onclick = () => { dismissed = current?.assistant.error ?? null; $("error").hidden = true; errorSource = null; };
 $("speech").onchange = () => { try { localStorage.setItem("live-speech", $("speech").checked ? "1" : "0"); } catch {} };
 try { $("speech").checked = localStorage.getItem("live-speech") === "1"; } catch {}
 $("verify-cancel").onclick = action(async () => { if (verifying) await api("verify-cancel", { operationId: verifying }); });
 $("verify").onsubmit = action(async () => {
   const session = current?.sessions.find((entry) => entry.id === focused);
-  if (!session) throw new Error("请选择 session");
+  if (!session) throw new Error(t("session.required"));
   const command = $("verify-command").value.trim();
-  if (!command) throw new Error("请提供明确的独立验收命令");
-  if (!window.confirm(`在当前工作区执行独立验收命令？\n${command}`)) return;
+  if (!command) throw new Error(t("verify.missing"));
+  if (!window.confirm(t("verify.confirm", { command }))) return;
   verifying = crypto.randomUUID();
   render(current);
   try {
@@ -653,7 +678,6 @@ async function offer(peer) {
   return peer.localDescription.sdp;
 }
 // One connect/disconnect toggle plus two switches; every label says the current state, not the next action.
-const liveLabels = { disabled: "语音不可用", disconnected: "未连接", connecting: "连接中…", active: "已连接", degraded: "连接受损", failed: "连接失败", closing: "正在断开…" };
 // A provider session that is not confirmed closed blocks reconnecting, so the toggle offers to close it in any state.
 function unsettled(live) {
   return ["connecting", "active", "degraded", "closing"].includes(live?.state) || (live?.state !== "disabled" && live?.closeConfirmed === false);
@@ -663,19 +687,19 @@ function voiceControls() {
   const state = connecting ? "connecting" : live.state;
   const linked = Boolean(pc) || unsettled(live);
   $("live-status").dataset.state = state;
-  $("live-label").textContent = live.preview && state === "active" ? "试听中…" : liveLabels[state] ?? state;
+  $("live-label").textContent = live.preview && state === "active" ? t("live.preview") : `live.${state}` in messages.en ? t(`live.${state}`) : state;
   $("live-status").title = live.error ?? "";
   $("live-error").hidden = !live.error || live.state === "disabled";
-  $("live-error").textContent = live.error ? `语音：${live.error}` : "";
+  $("live-error").textContent = live.error ? t("voice.error", { error: live.error }) : "";
   const connect = $("connect");
   connect.disabled = connecting || live.state === "closing" || (live.state === "disabled" && !pc);
-  connect.textContent = connecting ? "连接中…" : live.state === "closing" ? "断开中…" : linked ? "断开语音" : "连接语音";
+  connect.textContent = t(connecting ? "voice.connecting" : live.state === "closing" ? "voice.closing" : linked ? "voice.disconnect" : "voice.connect");
   connect.classList.toggle("primary", !linked && !connecting);
   connect.classList.toggle("connected", linked && !connecting);
-  for (const [id, on, label] of [["mic", !micMuted, "麦克风"], ["mute", !muted, "助手声音"]]) {
+  for (const [id, on, label] of [["mic", !micMuted, "voice.mic"], ["mute", !muted, "voice.sound"]]) {
     $(id).disabled = !pc || connecting;
     $(id).setAttribute("aria-checked", String(on));
-    $(id).textContent = `${label} ${on ? "开" : "关"}`;
+    $(id).textContent = t("voice.switch", { label: t(label), state: t(on ? "switch.on" : "switch.off") });
   }
   settingsVoices();
 }
@@ -700,7 +724,7 @@ $("connect").onclick = action(async () => {
       $("audio").srcObject = streams[0];
       try { await $("audio").play(); } catch { $("play").hidden = false; }
     };
-    pc.onconnectionstatechange = () => { if (pc?.connectionState === "failed") fail(new Error("媒体连接失败；终端继续执行。请显式断开后重连。")); };
+    pc.onconnectionstatechange = () => { if (pc?.connectionState === "failed") fail(new Error(t("media.failed"))); };
     const result = await api("live/open", { sdp: await offer(pc) });
     await pc.setRemoteDescription({ type: "answer", sdp: result.sdp });
     // A new connection always starts audible; the backend keeps the last session's choice otherwise.
@@ -720,10 +744,13 @@ $("mic").onclick = action(() => { micMuted = !micMuted; stream?.getAudioTracks()
 $("play").onclick = action(async () => { await $("audio").play(); $("play").hidden = true; });
 // Settings: every value except the password; the backend validates, stores and applies them at once.
 const settingsForm = $("settings-form");
-const settingKeys = ["subscription", "liveEndpoint", "liveDeployment", "liveVoice", "ttsEndpoint", "ttsDeployment", "ttsVoice",
+const settingKeys = ["voiceLanguage", "subscription", "liveEndpoint", "liveDeployment", "liveVoice", "ttsEndpoint", "ttsDeployment", "ttsVoice",
   "intentEndpoint", "intentDeployment", "intentEffort", "workspace", "roots", "dshProfile", "dshToken", "hooks", "verifyTimeout", "uploadMb"];
-const liveKeys = ["subscription", "liveEndpoint", "liveDeployment", "liveVoice"];
-const shown = (key, value) => key === "roots" ? value.join("、") || "（无）" : typeof value === "boolean" ? (value ? "开" : "关") : String(value) || "（空）";
+// The live voice's language is part of its instructions, which are fixed per connection.
+const liveKeys = ["voiceLanguage", "subscription", "liveEndpoint", "liveDeployment", "liveVoice"];
+const shown = (key, value) => key === "voiceLanguage" ? t(`voiceLanguage.${value}`)
+  : key === "roots" ? value.join(t("list.separator")) || t("settings.none")
+    : typeof value === "boolean" ? t(value ? "switch.on" : "switch.off") : String(value) || t("settings.empty");
 function settingValue(key) {
   const field = settingsForm.elements[key];
   if (key === "roots") return field.value.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -747,11 +774,11 @@ function settingDefaults() {
     if (!hint) {
       hint = document.createElement("span"); hint.className = "default";
       const text = document.createElement("span"), reset = document.createElement("button");
-      reset.type = "button"; reset.textContent = "恢复默认";
+      reset.type = "button"; reset.dataset.i18n = "settings.reset"; reset.textContent = t("settings.reset");
       reset.onclick = (event) => { event.preventDefault(); setSetting(key, current.settings.defaults[key]); settingDefaults(); };
       hint.append(text, reset); label.append(hint);
     }
-    hint.firstChild.textContent = `默认：${shown(key, defaults[key])}`;
+    hint.firstChild.textContent = t("settings.default", { value: shown(key, defaults[key]) });
     hint.lastChild.hidden = JSON.stringify(settingValue(key)) === JSON.stringify(defaults[key]);
   }
 }
@@ -764,7 +791,7 @@ function openSettings() {
   voiceOptions(settingsForm.elements.ttsVoice, current.settings.ttsVoices);
   for (const key of settingKeys) setSetting(key, values[key]);
   settingDefaults();
-  $("settings-status").textContent = ignored.length ? `已忽略无效的已保存设置：${ignored.join("、")}` : "";
+  $("settings-status").textContent = ignored.length ? t("settings.ignored", { keys: ignored.join(t("list.separator")) }) : "";
   settingsVoices();
   $("settings-dialog").showModal();
 }
@@ -778,11 +805,15 @@ function settingsVoices() {
 }
 async function previewRun(button, run) {
   previewing = true; settingsVoices();
-  const label = button.textContent; button.textContent = "播放中…";
+  button.dataset.i18n = "preview.playing"; button.textContent = t("preview.playing");
   try { await run(); }
-  finally { previewing = false; button.textContent = label; settingsVoices(); }
+  finally { previewing = false; button.dataset.i18n = "preview.button"; button.textContent = t("preview.button"); settingsVoices(); }
 }
-$("preview-tts").onclick = action(() => previewRun($("preview-tts"), () => speak("你好，这是朗读待确认提醒时使用的声音。", settingValue("ttsVoice"))));
+// Samples speak the default language chosen in the form, which need not be saved yet.
+$("preview-tts").onclick = action(() => previewRun($("preview-tts"), () => {
+  const language = settingValue("voiceLanguage");
+  return speak(t("preview.ttsSample", {}, language), settingValue("ttsVoice"), language);
+}));
 $("preview-live").onclick = action(() => previewRun($("preview-live"), async () => {
   // The microphone is never opened for a sample: the connection sends silence, which keeps the session's audio clock running.
   const peer = new RTCPeerConnection(), audio = new Audio(), context = new AudioContext();
@@ -792,9 +823,9 @@ $("preview-live").onclick = action(() => previewRun($("preview-live"), async () 
   for (const track of silence.stream.getTracks()) peer.addTrack(track, silence.stream);
   peer.ontrack = ({ streams }) => { audio.srcObject = streams[0]; void audio.play().catch(() => {}); };
   try {
-    const result = await api("live/open", { sdp: await offer(peer), voice: settingValue("liveVoice"), preview: true });
+    const result = await api("live/open", { sdp: await offer(peer), voice: settingValue("liveVoice"), language: settingValue("voiceLanguage"), preview: true });
     await peer.setRemoteDescription({ type: "answer", sdp: result.sdp });
-    await until(() => peer.connectionState === "connected", 15000, "试听连接超时");
+    await until(() => peer.connectionState === "connected", 15000, t("preview.timeout"));
     await api("live/preview", {});
     // The transcript streams with the audio: once it has been quiet for a while the sample is over.
     let text = "", changed = Date.now();
@@ -802,7 +833,7 @@ $("preview-live").onclick = action(() => previewRun($("preview-live"), async () 
       const output = current?.assistant.live.output ?? "";
       if (output !== text) { text = output; changed = Date.now(); }
       return text && Date.now() - changed > 2500;
-    }, 25000, "试听没有收到语音");
+    }, 25000, t("preview.silent"));
   } finally {
     // Close the provider session first so its final usage is confirmed, then drop the media.
     await api("live/close", {}).catch(() => {});
@@ -825,8 +856,8 @@ settingsForm.onsubmit = action(async (event) => {
   const linked = Boolean(pc) || unsettled(current.assistant.live);
   let reconnect = false;
   if (changedLive && linked) {
-    reconnect = window.confirm("语音设置需要重新连接语音才能生效。现在断开并重新连接吗？");
-    if (!reconnect && movedLive) throw new Error("更改实时语音的 Foundry endpoint 或订阅前需要先断开语音。");
+    reconnect = window.confirm(t("settings.reconnect"));
+    if (!reconnect && movedLive) throw new Error(t("settings.moved"));
     if (reconnect) await disconnect();
   }
   current.settings = await api("settings", { values });

@@ -21,7 +21,7 @@ npm run test:browser                      # headless Chromium and Firefox agains
 
 - 改动保持小而聚焦，沿用现有风格：ES 模块（`.mjs`）、无构建步骤、请求用 `zod` 校验、尽量少的运行时依赖。新增依赖请先在 issue 中讨论。
 - 行为变化需要测试（`tests/*.test.mjs` 或 `scripts/test-assistant-browser.mjs`）。修复 bug 时尽量先写一个会失败的测试。不要 mock 掉被测的核心行为。
-- 代码、注释、提交信息和日志用英文。网页界面和语音提示目前是中文。
+- 代码、注释、提交信息和日志用英文。网页界面文字集中在 `packages/live-assistant/public/i18n.js`，有中文和英文两份词典：新增的标记用 `data-i18n*` 指定词条，每个词条在两份词典中都要添加（`npm run test:browser` 会检查两者一致）。语音播报的文字跟随单独的 `voiceLanguage` 设置，而不是页面语言。
 - 文档中英双语：`README.md` / `README.zh-CN.md` 以及 `docs/*.md` / `docs/*.zh-CN.md`。行为或配置变化时两种语言都要更新；只能写一种语言时请在 pull request 中说明，我们会协助补齐。
 - Azure AI Foundry 只通过 Entra ID（`AzureCliCredential`）访问，不要加入 API key 认证。
 - 保持[威胁模型](docs/threat-model.zh-CN.md)中的安全模型：只有用户的按钮或语音决定能批准提案，模型输出和终端文字永远不能。

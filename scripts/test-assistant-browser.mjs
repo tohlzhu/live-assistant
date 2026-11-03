@@ -47,7 +47,8 @@ try {
   // Without an override Playwright launches the Chromium it installed (`npx playwright install chromium`).
   const executablePath = process.env.LIVE_ASSISTANT_CHROMIUM || undefined;
   browser = await chromium.launch({ executablePath, headless: true, chromiumSandbox: true });
-  page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  // The page follows the browser language until one is picked; most checks read the Chinese texts.
+  page = await browser.newPage({ viewport: { width: 1440, height: 900 }, locale: "zh-CN" });
   errors.length = 0;
   page.on("pageerror", (error) => errors.push(error.message));
   // A slow login reply invites a second Enter; the page must still build one terminal on one socket.
@@ -67,7 +68,7 @@ try {
   assert.equal(sockets.length, 1);
   // A still-valid login whose first state check is slow: submitting the visible form must not enter twice.
   {
-    const lateContext = await browser.newContext();
+    const lateContext = await browser.newContext({ locale: "zh-CN" });
     await lateContext.addCookies(await page.context().cookies());
     const late = await lateContext.newPage();
     let first = true;
@@ -86,7 +87,7 @@ try {
   // A dropped terminal socket: the connection banner clears once it reattaches, and a login lost while the socket was
   // down (backend restart or expiry refuses the upgrade without 1008) returns the page to the login form.
   {
-    const dropContext = await browser.newContext();
+    const dropContext = await browser.newContext({ locale: "zh-CN" });
     const drop = await dropContext.newPage();
     await drop.goto(app.origin);
     await drop.locator("#password").fill(password);
@@ -350,7 +351,7 @@ try {
   assert.equal(await page.locator("#request button").textContent(), "交给助手");
   assert.deepEqual(interpreted, [{ dialogue: "ctrl enter request", focused: shown }]);
   // A typed request that needs clarification says so on the page, since no voice reply will come.
-  await page.waitForFunction(() => !document.querySelector("#error").hidden && document.querySelector("#error-text").textContent === "Clarification required: synthetic clarification");
+  await page.waitForFunction(() => !document.querySelector("#error").hidden && document.querySelector("#error-text").textContent === "需要澄清：synthetic clarification");
   await page.locator("#error-close").click();
   // Upload into the focused shell's working directory, refuse the same name, then download the file back.
   const uploaded = { name: "上传 proof.txt", mimeType: "text/plain", buffer: Buffer.from("uploaded via page") };
@@ -497,15 +498,17 @@ try {
   assert.deepEqual(icons, { status: 200, type: "image/svg+xml; charset=utf-8", keyboard: true, mask: true });
   await page.waitForFunction(() => /^\d+%$/.test(document.querySelector("#stat-cpu .stat-value").textContent), null, { timeout: 8000 });
   // A second tab of the same login: page.newPage() owns its context, so share the cookie with a sibling context.
-  const tab = await browser.newContext();
+  const tab = await browser.newContext({ locale: "zh-CN" });
   await tab.addCookies(await page.context().cookies());
   const other = await tab.newPage();
   await other.goto(app.origin);
   await other.locator("#workspace").waitFor({ state: "visible" });
-  // The avatar menu holds settings and logout. Settings save at once, persist, and an invalid value keeps the dialog open.
+  // The avatar menu holds settings, the display language and logout. Settings save at once, persist, and an invalid value
+  // keeps the dialog open.
   assert.equal(await page.locator("#account-menu").isHidden(), true);
   await page.locator("#avatar").click();
-  assert.deepEqual(await page.locator("#account-menu button").allTextContents(), ["设置", "登出"]);
+  assert.deepEqual(await page.locator("#account-menu button").evaluateAll((items) => items.map((item) => [item.textContent, item.getAttribute("role"), item.getAttribute("aria-checked")])),
+    [["设置", "menuitem", null], ["中文", "menuitemradio", "true"], ["English", "menuitemradio", "false"], ["登出", "menuitem", null]]);
   await page.keyboard.press("Escape");
   assert.equal(await page.locator("#account-menu").isHidden(), true);
   await page.locator("#avatar").click();
@@ -539,6 +542,78 @@ try {
   await page.locator("#settings-save").click();
   await page.locator("#settings-dialog").waitFor({ state: "hidden" });
   assert.deepEqual(JSON.parse(await readFile(join(directory, "settings.json"), "utf8")), {});
+  // Both dictionaries hold the same keys, and every key the markup names exists.
+  const dictionary = await page.evaluate(() => {
+    const keys = (language) => Object.keys(messages[language]).sort();
+    const named = [...document.querySelectorAll("[data-i18n], [data-i18n-title], [data-i18n-aria-label], [data-i18n-placeholder]")]
+      .flatMap((element) => [element.dataset.i18n, element.dataset.i18nTitle, element.dataset.i18nAriaLabel, element.dataset.i18nPlaceholder]).filter(Boolean);
+    return { same: JSON.stringify(keys("zh-CN")) === JSON.stringify(keys("en")), missing: named.filter((key) => !(key in messages.en)) };
+  });
+  assert.deepEqual(dictionary, { same: true, missing: [] });
+  // The display language switches from the avatar menu at once, is remembered per browser, and leaves the voice
+  // language setting alone.
+  const cjk = /[\u3400-\u9fff\uff00-\uffef]/;
+  await page.locator("#avatar").click();
+  await page.getByRole("menuitemradio", { name: "English" }).click();
+  assert.equal(await page.locator("#account-menu").isHidden(), true);
+  const english = async () => page.evaluate((pattern) => {
+    const cjk = new RegExp(pattern);
+    const texts = [".app-bar", ".voice-head", ".voice-controls", "#request label", "#verify", "#terminal-status"].map((query) => document.querySelector(query).innerText);
+    const titles = [...document.querySelectorAll(".app-bar [title], .app-bar [aria-label], aside [title]")].flatMap((element) => [element.title, element.getAttribute("aria-label") ?? ""]);
+    return {
+      lang: document.documentElement.lang, saved: localStorage.getItem("live-lang"), create: document.querySelector("#create").textContent,
+      chinese: [...texts, ...titles].filter((text) => cjk.test(text)),
+    };
+  }, cjk.source);
+  assert.deepEqual(await english(), { lang: "en", saved: "en", create: "New session ▾", chinese: [] });
+  assert.match(await page.locator("#server-stats").getAttribute("title"), /\ntmux server PID \d+\n/);
+  await page.locator("#avatar").click();
+  assert.deepEqual(await page.locator("#account-menu [role=menuitemradio]").evaluateAll((items) => items.map((item) => item.getAttribute("aria-checked"))), ["false", "true"]);
+  await page.locator("#open-settings").click();
+  await page.locator("#settings-dialog").waitFor({ state: "visible" });
+  assert.equal(cjk.test(await form.innerText()), false, await form.innerText());
+  assert.equal(await form.locator("[name=voiceLanguage]").inputValue(), "zh-CN");
+  await form.locator("[name=voiceLanguage]").selectOption("en");
+  await page.locator("#settings-save").click();
+  await page.locator("#settings-dialog").waitFor({ state: "hidden" });
+  assert.deepEqual(JSON.parse(await readFile(join(directory, "settings.json"), "utf8")), { voiceLanguage: "en" });
+  await page.reload();
+  await page.locator("#workspace").waitFor({ state: "visible" });
+  await page.waitForFunction(() => document.querySelectorAll("#tabs .tab").length > 0);
+  assert.deepEqual(await english(), { lang: "en", saved: "en", create: "New session ▾", chinese: [] });
+  // The other browser context keeps its own display language.
+  assert.equal(await other.evaluate(() => document.documentElement.lang), "zh-CN");
+  await page.locator("#avatar").click();
+  await page.getByRole("menuitemradio", { name: "中文" }).click();
+  assert.deepEqual([await page.evaluate(() => document.documentElement.lang), await page.locator("#create").textContent()], ["zh-CN", "新建 session ▾"]);
+  await page.locator("#avatar").click();
+  await page.locator("#open-settings").click();
+  await page.locator("#settings-defaults").click();
+  await page.locator("#settings-save").click();
+  await page.locator("#settings-dialog").waitFor({ state: "hidden" });
+  assert.deepEqual(JSON.parse(await readFile(join(directory, "settings.json"), "utf8")), {});
+  // An English browser starts in English; the login page offers the switch before signing in.
+  {
+    const visitor = await browser.newContext({ locale: "en-US" });
+    const login = await visitor.newPage();
+    login.on("pageerror", (error) => errors.push(error.message));
+    await login.goto(app.origin);
+    const state = () => login.evaluate(() => ({
+      lang: document.documentElement.lang, title: document.querySelector("#login h1").textContent, submit: document.querySelector("#login-submit").textContent,
+      pressed: [...document.querySelectorAll("#login [data-lang]")].map((button) => button.getAttribute("aria-pressed")),
+    }));
+    assert.deepEqual(await state(), { lang: "en", title: "Sign in to Live Assistant", submit: "Sign in", pressed: ["false", "true"] });
+    await login.locator('#login [data-lang="zh-CN"]').click();
+    assert.deepEqual(await state(), { lang: "zh-CN", title: "登录 Live Assistant", submit: "登录", pressed: ["true", "false"] });
+    await login.reload();
+    assert.equal((await state()).lang, "zh-CN");
+    await login.locator('#login [data-lang="en"]').click();
+    await login.locator("#password").fill(password);
+    await login.locator("#password").press("Enter");
+    await login.locator("#workspace").waitFor({ state: "visible" });
+    assert.equal(await login.locator("#create").textContent(), "New session ▾");
+    await visitor.close();
+  }
   await page.locator("#avatar").click();
   await page.locator("#logout").click();
   await page.locator("#login").waitFor({ state: "visible" });
@@ -551,7 +626,7 @@ try {
   {
     const gecko = await firefox.launch({ headless: true });
     try {
-      const fox = await gecko.newPage();
+      const fox = await gecko.newPage({ locale: "zh-CN" });
       const banners = [];
       fox.on("pageerror", (error) => errors.push(error.message));
       fox.on("console", (message) => { if (message.text().startsWith("banner: ")) banners.push(message.text()); });
@@ -580,7 +655,7 @@ try {
   const fixture = join(directory, "browser-result.json");
   await writeFile(fixture, JSON.stringify({ tabs: 2, closedTab: true, reloadPreservedPids: true, narrowLayout: true, errors }));
   assert.deepEqual(errors, []);
-  console.log("Independent browser workspace passed: single entry on slow or repeated login, terminal reconnect clears its banner and a lost login returns to the login form, voice control states, missing harness marking, harness menu with create dialog with default/custom directory, terminal auto-fit inside its frame, voice page switch, native typing, numbered decision cards, key cards, hand-back to the terminal with focus, hidden confirmations while the terminal has focus, tab click focuses its terminal, file upload/download, multiple tabs, tab color and note, tab wrapping, tab close, reload persistence, narrow layout, fullscreen TUI, mouse, select-and-copy, screen copy, paste and control keys, focus on new session, spoken turns in order, one top bar with commands and server status, same-origin icons, avatar menu with settings dialog (save, persist, invalid value, restore defaults), logout across tabs, Firefox logout without a flashed error banner.");
+  console.log("Independent browser workspace passed: single entry on slow or repeated login, terminal reconnect clears its banner and a lost login returns to the login form, voice control states, missing harness marking, harness menu with create dialog with default/custom directory, terminal auto-fit inside its frame, voice page switch, native typing, numbered decision cards, key cards, hand-back to the terminal with focus, hidden confirmations while the terminal has focus, tab click focuses its terminal, file upload/download, multiple tabs, tab color and note, tab wrapping, tab close, reload persistence, narrow layout, fullscreen TUI, mouse, select-and-copy, screen copy, paste and control keys, focus on new session, spoken turns in order, one top bar with commands and server status, same-origin icons, avatar menu with settings dialog (save, persist, invalid value, restore defaults), Chinese/English display language from the avatar menu and the login page (browser default, per-browser memory, matching dictionaries, separate voice language), logout across tabs, Firefox logout without a flashed error banner.");
 } catch (error) {
   console.error(JSON.stringify({
     terminals: app.sessions.list().map((session) => ({ id: session.id, name: session.name, state: session.state, exitCode: session.exitCode, text: app.sessions.history(session.id) })),

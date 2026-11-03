@@ -69,12 +69,12 @@ async function renderMandarin(browser, phrase, name) {
   try {
     const instruction = join(speechDirectory, "render.wav");
     await run("espeak-ng", ["-v", "en-us", "-s", "140", "-w", instruction, "Please read the sentence in your instructions aloud once, and nothing else."]);
-    page = await browser.newPage();
+    page = await browser.newPage({ locale: "zh-CN" });
     await page.addInitScript(virtualMicrophone);
     await page.route("**/render.wav", (route) => readFile(instruction).then((body) => route.fulfill({ body, contentType: "audio/wav" })));
     await page.goto(renderer.origin);
     await page.locator("#password").fill(renderPassword);
-    await page.locator("#login button").click();
+    await page.locator("#login-submit").click();
     await page.locator("#connect").click();
     await page.waitForFunction(() => document.querySelector("#live-status").dataset.state === "active" && document.getElementById("audio").srcObject, null, { timeout: 40000 });
     await page.evaluate(async () => {
@@ -123,7 +123,8 @@ try {
     audioFile = await renderMandarin(browser, "请创建一个空的 shell 会话。", "create");
     statusFile = await renderMandarin(browser, "请查看所有会话的状态。", "status");
   }
-  const page = await browser.newPage();
+  // The cards are located by their Chinese button text, so the page must not follow an English browser.
+  const page = await browser.newPage({ locale: "zh-CN" });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.addInitScript(virtualMicrophone);
@@ -131,7 +132,7 @@ try {
   if (statusFile) await page.route("**/status.webm", async (route) => route.fulfill({ body: await readFile(statusFile), contentType: "audio/webm" }));
   await page.goto(app.origin);
   await page.locator("#password").fill(password);
-  await page.locator("#login button").click();
+  await page.locator("#login-submit").click();
   await page.locator("#workspace").waitFor({ state: "visible" });
   await page.locator("#connect").click();
   await page.waitForFunction(() => document.querySelector("#live-status").dataset.state === "active" && document.getElementById("audio").srcObject, null, { timeout: 40000 });

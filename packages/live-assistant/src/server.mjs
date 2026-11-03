@@ -10,10 +10,10 @@ import { WebSocketServer, WebSocket } from "ws";
 import { z } from "zod";
 import { Sessions } from "./sessions.mjs";
 import { lockDirectory, Serial } from "./store.mjs";
-import { Assistant, createLive, createInterpreter, interpreterUsage } from "./assistant.mjs";
+import { Assistant, assistantInstructions, createLive, createInterpreter, interpreterUsage } from "./assistant.mjs";
 import { defaultAdapters } from "./harness.mjs";
 import { createSpeech } from "./foundry.mjs";
-import { Settings, settingsPatch, voiceName } from "./settings.mjs";
+import { Settings, settingsPatch, voiceName, voiceLanguage } from "./settings.mjs";
 
 const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), "../public");
 const root = resolve(publicDir, "../../..");
@@ -33,8 +33,10 @@ const schemas = {
   "/api/verify-cancel": z.strictObject({ operationId: uuid }),
   "/api/request": z.strictObject({ text: z.string().min(1), sessionId: uuid.nullable() }),
   "/api/logout": z.strictObject({}),
-  "/api/speech": z.strictObject({ text: z.string().trim().min(1).max(4000), voice: voiceName.optional() }),
-  "/api/live/open": z.strictObject({ sdp: z.string().min(1).max(65536), voice: voiceName.optional(), preview: z.boolean().default(false) }),
+  "/api/speech": z.strictObject({ text: z.string().trim().min(1).max(4000), voice: voiceName.optional(), language: voiceLanguage.optional() }),
+  // A preview may try an unsaved voice and language; a conversation always uses the saved settings' language.
+  "/api/live/open": z.strictObject({ sdp: z.string().min(1).max(65536), voice: voiceName.optional(), language: voiceLanguage.optional(), preview: z.boolean().default(false) })
+    .refine((data) => data.preview || !data.language, "language only applies to a voice preview"),
   "/api/live/preview": z.strictObject({}),
   "/api/settings": z.strictObject({ values: settingsPatch }),
   "/api/live/close": z.strictObject({}),
@@ -51,18 +53,22 @@ export async function startAssistant(options = {}) {
   catch (error) { await lock.release(); throw error; }
 }
 
-// A voice preview session only reads one sample sentence aloud and is then closed.
-const previewInstructions = "You are a voice preview. When the application sends an update, say its text aloud exactly once in natural Mandarin, add nothing, never delegate, then stay silent.";
-const previewText = "你好，我是 Live Assistant。这是我现在的声音，你可以选择合适的音色。";
+// A voice preview session only reads one sample sentence aloud, in the voice language, and is then closed.
+const previewInstructions = (name) => `You are a voice preview. When the application sends an update, say its text aloud exactly once in natural ${name}, add nothing, never delegate, then stay silent.`;
+const previews = {
+  "zh-CN": { instructions: previewInstructions("Mandarin"), text: "你好，我是 Live Assistant。这是我现在的声音，你可以选择合适的音色。" },
+  en: { instructions: previewInstructions("English"), text: "Hello, I am Live Assistant. This is how I sound now, so you can pick a voice you like." },
+};
 const previewLimit = 30000;
 
 async function serve({
   directory, workspace, password, port = 0, origin: configuredOrigin, adapters: fixedAdapters, live, liveTransport, interpret, speak,
-  foundry = {}, harness = {}, verifyTimeout = 600000, roots = [], env, uploadLimit,
+  foundry = {}, harness = {}, verifyTimeout = 600000, roots = [], env, uploadLimit, voiceLanguage = "zh-CN",
 }, lock) {
   directory = resolve(directory);
   // The options (from the environment) are defaults; values saved from the page override them and apply without a restart.
   const settings = new Settings(directory, {
+    voiceLanguage,
     subscription: foundry.subscription ?? "",
     liveEndpoint: foundry.liveEndpoint ?? "", liveDeployment: foundry.deployment ?? "gpt-live-1", liveVoice: foundry.voice ?? "marin",
     ttsEndpoint: foundry.ttsEndpoint ?? "", ttsDeployment: foundry.ttsDeployment ?? "gpt-4o-mini-tts", ttsVoice: foundry.ttsVoice ?? "alloy",
@@ -74,7 +80,11 @@ async function serve({
   // Injected components (tests) stay fixed; the rest is rebuilt from the settings.
   const fixed = { live: Boolean(live), interpret: Boolean(interpret), speak: Boolean(speak) };
   const usage = interpreterUsage(directory);
-  const liveConfig = (values) => ({ endpoint: values.liveEndpoint, subscription: values.subscription || undefined, deployment: values.liveDeployment, voice: values.liveVoice });
+  // The language is part of the instructions, which are fixed when a conversation is created.
+  const liveConfig = (values) => ({
+    endpoint: values.liveEndpoint, subscription: values.subscription || undefined, deployment: values.liveDeployment, voice: values.liveVoice,
+    instructions: assistantInstructions(values.voiceLanguage),
+  });
   // Builds everything a settings change needs without touching the running parts, so a failure changes nothing.
   const build = async (values) => {
     await mkdir(values.workspace, { recursive: true, mode: 0o700 });
@@ -86,7 +96,7 @@ async function serve({
       interpret: fixed.interpret ? interpret : values.intentEndpoint
         ? createInterpreter({ endpoint: values.intentEndpoint, subscription, deployment: values.intentDeployment, effort: values.intentEffort, directory, usage }) : undefined,
       speak: fixed.speak ? speak : values.ttsEndpoint
-        ? createSpeech({ endpoint: values.ttsEndpoint, subscription, deployment: values.ttsDeployment, voice: values.ttsVoice }) : undefined,
+        ? createSpeech({ endpoint: values.ttsEndpoint, subscription, deployment: values.ttsDeployment, voice: values.ttsVoice, language: values.voiceLanguage }) : undefined,
     };
   };
   let faults = settings.ignored.length ? [{ at: Date.now(), message: `Ignored invalid saved settings: ${settings.ignored.join(", ")}` }] : [];
@@ -119,6 +129,8 @@ async function serve({
     ({ interpret, speak } = parts);
     assistant.interpret = interpret;
   });
+  // The language of the connected voice preview, which picks the sample sentence it reads.
+  let previewLanguage = settings.values.voiceLanguage;
   const logins = new Map();
   const clients = new Map();
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
@@ -208,6 +220,7 @@ async function serve({
   const assets = {
     "/": [join(publicDir, "index.html"), "text/html"],
     "/client.js": [join(publicDir, "client.js"), "text/javascript"],
+    "/i18n.js": [join(publicDir, "i18n.js"), "text/javascript"],
     "/style.css": [join(publicDir, "style.css"), "text/css"],
     "/icons.svg": [join(publicDir, "icons.svg"), "image/svg+xml"],
     "/vendor/xterm.js": [join(root, "node_modules/@xterm/xterm/lib/xterm.js"), "text/javascript"],
@@ -316,7 +329,7 @@ async function serve({
         }
         case "/api/speech": {
           if (!speak) throw Object.assign(new Error("Speech output requires Foundry configuration"), { status: 409 });
-          const audio = await speak(data.text, { voice: data.voice });
+          const audio = await speak(data.text, { voice: data.voice, language: data.language });
           response.writeHead(200, { "Content-Type": audio.type, "Cache-Control": "no-store" });
           response.end(audio.data);
           return;
@@ -324,18 +337,19 @@ async function serve({
         case "/api/request": result = { ok: true, ...await assistant.request(data.text, null, data.sessionId) }; break;
         case "/api/live/open":
           if (data.preview) {
-            result = await live.open({ sdp: data.sdp, language: "zh" }, { voice: data.voice, instructions: previewInstructions, preview: true });
+            previewLanguage = data.language ?? settings.values.voiceLanguage;
+            result = await live.open({ sdp: data.sdp }, { voice: data.voice, instructions: previews[previewLanguage].instructions, preview: true });
             // The page closes the preview once the sample is heard; this bounds its cost if the page goes away first.
             const { sessionId } = live.diagnostics();
             setTimeout(() => { if (live.diagnostics().sessionId === sessionId) void live.close().catch(() => {}); }, previewLimit).unref();
             break;
           }
-          result = await live.open({ sdp: data.sdp, language: "zh" }, { voice: data.voice }); await assistant.sync(); await assistant.observe(assistant.focused); break;
+          result = await live.open({ sdp: data.sdp }, { voice: data.voice }); await assistant.sync(); await assistant.observe(assistant.focused); break;
         case "/api/live/preview": {
           // Called once the page's preview connection is up; the page closes it after the sample has played.
           const current = live.diagnostics();
           if (!current.preview || current.state !== "active") throw Object.assign(new Error("No voice preview is connected"), { status: 409 });
-          try { await live.appendContext({ sessionId: current.sessionId, text: previewText }); }
+          try { await live.appendContext({ sessionId: current.sessionId, text: previews[previewLanguage].text }); }
           catch (error) { await live.close(); throw error; }
           break;
         }
