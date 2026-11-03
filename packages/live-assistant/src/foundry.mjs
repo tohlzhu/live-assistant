@@ -14,12 +14,16 @@ export function foundryCredential(subscription) {
   return new AzureCliCredential(subscription ? { subscription } : {});
 }
 
+// The speech style prompt follows the voice assistant's language.
+const speechInstructions = { "zh-CN": "用自然、简洁的普通话播报。", en: "Read this aloud in natural, concise English." };
+
 // Text-to-speech through the Foundry OpenAI v1 route with an Entra bearer token.
 export function createSpeech({
-  endpoint, subscription, deployment = "gpt-4o-mini-tts", voice: defaultVoice = "alloy", credential = foundryCredential(subscription), fetch: request = fetch,
+  endpoint, subscription, deployment = "gpt-4o-mini-tts", voice: defaultVoice = "alloy", language: defaultLanguage = "zh-CN",
+  credential = foundryCredential(subscription), fetch: request = fetch,
 }) {
   const origin = foundryOrigin(endpoint);
-  return async (text, { voice = defaultVoice, format = "mp3", instructions = "用自然、简洁的普通话播报。" } = {}) => {
+  return async (text, { voice = defaultVoice, language = defaultLanguage, format = "mp3", instructions = speechInstructions[language] ?? speechInstructions["zh-CN"] } = {}) => {
     const input = String(text).trim();
     if (!input) throw new Error("Speech text is empty");
     const token = await credential.getToken(audience);

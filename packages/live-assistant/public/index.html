@@ -11,89 +11,94 @@
   <script defer src="/client.js"></script>
 </head>
 <body>
-  <form id="login"><span class="logo" aria-hidden="true"></span><h1>登录 Live Assistant</h1><div class="login-box"><label>登录密码 <input id="password" type="password" autocomplete="current-password" required></label><button id="login-submit" class="primary" disabled title="页面脚本加载中">登录</button></div><p class="hint">登录以管理本机的原生终端 session，关闭页面不会结束进程。</p></form>
+  <form id="login"><span class="logo" aria-hidden="true"></span><h1 data-i18n="login.title">登录 Live Assistant</h1><div class="login-box"><label><span data-i18n="login.password">登录密码</span> <input id="password" type="password" autocomplete="current-password" required></label><button id="login-submit" class="primary" disabled title="页面脚本加载中" data-i18n="login.submit">登录</button></div><p class="hint" data-i18n="login.hint">登录以管理本机的原生终端 session，关闭页面不会结束进程。</p><div class="languages" role="group" aria-label="界面语言" data-i18n-aria-label="language.ui"><button type="button" data-lang="zh-CN" lang="zh-CN" aria-pressed="true">中文</button><button type="button" data-lang="en" lang="en" aria-pressed="false">English</button></div></form>
   <main id="workspace" hidden>
     <header class="app-bar">
       <div class="brand"><span class="logo" aria-hidden="true"></span><h1>Live Assistant</h1></div>
-      <div class="command-bar" role="toolbar" aria-label="终端操作"><span class="menu-anchor"><button id="create" class="primary" aria-haspopup="menu" aria-expanded="false" aria-controls="harness-menu">新建 session ▾</button><div id="harness-menu" role="menu" aria-label="选择 harness" hidden></div></span><span class="divider" aria-hidden="true"></span><button id="claim" aria-pressed="false">接管键盘</button><button id="select" aria-pressed="false" title="下一次拖动只选择文本，松开即复制；期间 harness 收不到鼠标；Esc 取消">选择复制</button><button id="copy-screen" title="复制当前终端屏幕上的文本">复制屏幕</button><button id="upload" title="上传到当前 session 的工作路径；同名文件会报错，不会覆盖">上传文件</button><input id="upload-input" type="file" multiple hidden><button id="download" title="从当前 session 的工作路径下载文件">下载文件</button><button id="wait">等待反馈</button><button id="terminate" class="danger">终止进程</button></div>
-      <div id="server-stats" role="group" aria-label="服务器状态">
+      <div class="command-bar" role="toolbar" aria-label="终端操作" data-i18n-aria-label="toolbar.label"><span class="menu-anchor"><button id="create" class="primary" aria-haspopup="menu" aria-expanded="false" aria-controls="harness-menu" data-i18n="create.button">新建 session ▾</button><div id="harness-menu" role="menu" aria-label="选择 harness" data-i18n-aria-label="create.menu" hidden></div></span><span class="divider" aria-hidden="true"></span><button id="claim" aria-pressed="false">接管键盘</button><button id="select" aria-pressed="false" title="下一次拖动只选择文本，松开即复制；期间 harness 收不到鼠标；Esc 取消" data-i18n-title="select.title" data-i18n="select.button">选择复制</button><button id="copy-screen" title="复制当前终端屏幕上的文本" data-i18n-title="copyScreen.title" data-i18n="copyScreen.button">复制屏幕</button><button id="upload" title="上传到当前 session 的工作路径；同名文件会报错，不会覆盖" data-i18n-title="upload.title" data-i18n="upload.button">上传文件</button><input id="upload-input" type="file" multiple hidden><button id="download" title="从当前 session 的工作路径下载文件" data-i18n-title="download.title" data-i18n="download.button">下载文件</button><button id="wait" data-i18n="wait.button">等待反馈</button><button id="terminate" class="danger" data-i18n="terminate.button">终止进程</button></div>
+      <div id="server-stats" role="group" aria-label="服务器状态" data-i18n-aria-label="stats.label">
         <span class="stat" id="stat-cpu"><span class="stat-name">CPU</span><span class="stat-value">—</span><span class="meter" aria-hidden="true"><span></span></span></span>
         <span class="stat" id="stat-memory"><span class="stat-name">MEM</span><span class="stat-value">—</span><span class="meter" aria-hidden="true"><span></span></span></span>
         <span class="stat" id="stat-disk"><span class="stat-name">DISK</span><span class="stat-value">—</span><span class="meter" aria-hidden="true"><span></span></span></span>
-      </div><span class="menu-anchor account"><button id="avatar" aria-label="账户" title="账户" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg></button><div id="account-menu" role="menu" aria-label="账户" hidden><button id="open-settings" role="menuitem">设置</button><button id="logout" role="menuitem" title="退出登录；终端 session 继续运行">登出</button></div></span>
+      </div><span class="menu-anchor account"><button id="avatar" aria-label="账户" title="账户" data-i18n-aria-label="account.label" data-i18n-title="account.label" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg></button><div id="account-menu" role="menu" aria-label="账户" data-i18n-aria-label="account.label" hidden><button id="open-settings" role="menuitem" data-i18n="settings.open">设置</button><div class="menu-separator" role="separator"></div><div class="menu-group" role="group" aria-label="界面语言" data-i18n-aria-label="language.ui"><span class="menu-label" aria-hidden="true" data-i18n="language.ui">界面语言</span><button role="menuitemradio" aria-checked="true" data-lang="zh-CN" lang="zh-CN">中文</button><button role="menuitemradio" aria-checked="false" data-lang="en" lang="en">English</button></div><div class="menu-separator" role="separator"></div><button id="logout" role="menuitem" title="退出登录；终端 session 继续运行" data-i18n-title="logout.title" data-i18n="logout.button">登出</button></div></span>
     </header>
     <section class="terminals">
-      <nav id="tabs" aria-label="终端 sessions"></nav>
-      <div id="color-menu" role="menu" aria-label="tab 颜色" hidden></div>
-      <p id="copy-status" role="status" hidden></p><p id="terminal-status" role="status">选择或新建一个终端。关闭页面不会结束进程。</p>
-      <div id="terminal" aria-label="原生 harness 终端"></div>
+      <nav id="tabs" aria-label="终端 sessions" data-i18n-aria-label="tabs.label"></nav>
+      <div id="color-menu" role="menu" aria-label="tab 颜色" data-i18n-aria-label="color.menu" hidden></div>
+      <p id="copy-status" role="status" hidden></p><p id="terminal-status" role="status" data-i18n="status.empty">选择或新建一个终端。关闭页面不会结束进程。</p>
+      <div id="terminal" aria-label="原生 harness 终端" data-i18n-aria-label="terminal.label"></div>
     </section>
     <dialog id="create-dialog" aria-labelledby="create-title">
       <form method="dialog" id="create-form">
-        <h2 id="create-title">新建 <span id="create-harness"></span> session</h2>
-        <fieldset><legend>工作目录</legend>
-          <label class="inline"><input type="radio" name="cwd" value="default" checked> 默认目录 <code id="create-default"></code></label>
-          <label class="inline"><input type="radio" name="cwd" value="custom"> 自定义目录</label>
-          <input id="create-cwd" aria-label="自定义工作目录" placeholder="绝对路径，或相对于工作区的路径" disabled>
+        <h2 id="create-title"><span data-i18n="create.titleBefore">新建</span> <span id="create-harness"></span> session</h2>
+        <fieldset><legend data-i18n="create.cwd">工作目录</legend>
+          <label class="inline"><input type="radio" name="cwd" value="default" checked> <span data-i18n="create.default">默认目录</span> <code id="create-default"></code></label>
+          <label class="inline"><input type="radio" name="cwd" value="custom"> <span data-i18n="create.custom">自定义目录</span></label>
+          <input id="create-cwd" aria-label="自定义工作目录" placeholder="绝对路径，或相对于工作区的路径" data-i18n-aria-label="create.customLabel" data-i18n-placeholder="create.customPlaceholder" disabled>
         </fieldset>
-        <p class="hint">允许的根目录（含子目录）：<span id="create-roots"></span>。不存在的目录会被创建。</p>
-        <div class="actions"><button value="create" class="primary" id="create-confirm">创建</button><button value="cancel" formnovalidate>取消</button></div>
+        <p class="hint"><span data-i18n="create.rootsBefore">允许的根目录（含子目录）：</span><span id="create-roots"></span><span data-i18n="create.rootsAfter">。不存在的目录会被创建。</span></p>
+        <div class="actions"><button value="create" class="primary" id="create-confirm" data-i18n="create.confirm">创建</button><button value="cancel" formnovalidate data-i18n="common.cancel">取消</button></div>
       </form>
     </dialog>
     <dialog id="settings-dialog" aria-labelledby="settings-title">
       <form method="dialog" id="settings-form">
-        <h2 id="settings-title">设置</h2>
-        <p class="hint">保存后立即生效：语音与朗读在下次连接或播放时使用新值，新建的终端 session 使用新的目录与 harness 设置，已在运行的 session 不受影响。登录密码只能在服务器上设置。</p>
-        <fieldset><legend>Foundry</legend>
-          <label data-key="subscription">Azure 订阅（名称或 ID，用于选择 az 登录的 tenant；留空用 az 当前订阅）<input name="subscription"></label>
-          <label data-key="liveEndpoint">实时语音 Endpoint<input name="liveEndpoint" type="url" placeholder="https://&lt;resource&gt;.openai.azure.com/"></label>
-          <label data-key="liveDeployment">实时语音部署<input name="liveDeployment" required></label>
-          <label data-key="liveVoice">实时语音音色<span class="voice-row"><select name="liveVoice"></select><button type="button" id="preview-live" title="用所选音色连接一次实时语音并朗读示例句">▶ 试听</button></span></label>
-          <label data-key="ttsEndpoint">朗读 Endpoint<input name="ttsEndpoint" type="url" placeholder="https://&lt;resource&gt;.openai.azure.com/"></label>
-          <label data-key="ttsDeployment">朗读部署<input name="ttsDeployment" required></label>
-          <label data-key="ttsVoice">朗读音色<span class="voice-row"><select name="ttsVoice"></select><button type="button" id="preview-tts" title="用所选音色朗读示例句">▶ 试听</button></span></label>
-          <label data-key="intentEndpoint">意图解析 Endpoint<input name="intentEndpoint" type="url" placeholder="https://&lt;resource&gt;.openai.azure.com/"></label>
-          <label data-key="intentDeployment">意图解析部署<input name="intentDeployment" required></label>
-          <label data-key="intentEffort">意图解析推理强度<select name="intentEffort"><option>none</option><option>minimal</option><option>low</option><option>medium</option><option>high</option><option>xhigh</option></select></label>
+        <h2 id="settings-title" data-i18n="settings.title">设置</h2>
+        <p class="hint" data-i18n="settings.hint">保存后立即生效：语音与朗读在下次连接或播放时使用新值，新建的终端 session 使用新的目录与 harness 设置，已在运行的 session 不受影响。登录密码只能在服务器上设置。界面语言在头像菜单中切换，只影响本浏览器。</p>
+        <fieldset><legend data-i18n="settings.voice">语音助手</legend>
+          <label data-key="voiceLanguage"><span data-i18n="settings.voiceLanguage">默认语言（实时语音、朗读提醒与试听；与界面语言分开设置）</span><select name="voiceLanguage"><option value="zh-CN" data-i18n="voiceLanguage.zh-CN">中文（普通话）</option><option value="en" data-i18n="voiceLanguage.en">英语</option></select></label>
         </fieldset>
-        <fieldset><legend>终端 session</legend>
-          <label data-key="workspace">工作区<input name="workspace" required placeholder="绝对路径"></label>
-          <label data-key="roots">额外允许的根目录（每行一个绝对路径）<textarea name="roots" rows="2"></textarea></label>
-          <label data-key="dshProfile">dsh profile<input name="dshProfile" required></label>
-          <label class="inline" data-key="dshToken"><input name="dshToken" type="checkbox"> 给 dsh 注入 Foundry token</label>
-          <label class="inline" data-key="hooks"><input name="hooks" type="checkbox"> 启用原生权限 hooks（Claude Code / Codex）</label>
-          <label data-key="verifyTimeout">验收命令超时（秒）<input name="verifyTimeout" type="number" min="0.001" step="any" required></label>
-          <label data-key="uploadMb">上传上限（MiB）<input name="uploadMb" type="number" min="0.001" step="any" required></label>
+        <fieldset><legend>Foundry</legend>
+          <label data-key="subscription"><span data-i18n="settings.subscription">Azure 订阅（名称或 ID，用于选择 az 登录的 tenant；留空用 az 当前订阅）</span><input name="subscription"></label>
+          <label data-key="liveEndpoint"><span data-i18n="settings.liveEndpoint">实时语音 Endpoint</span><input name="liveEndpoint" type="url" placeholder="https://&lt;resource&gt;.openai.azure.com/"></label>
+          <label data-key="liveDeployment"><span data-i18n="settings.liveDeployment">实时语音部署</span><input name="liveDeployment" required></label>
+          <label data-key="liveVoice"><span data-i18n="settings.liveVoice">实时语音音色</span><span class="voice-row"><select name="liveVoice"></select><button type="button" id="preview-live" title="用所选音色和默认语言连接一次实时语音并朗读示例句" data-i18n-title="preview.liveTitle" data-i18n="preview.button">▶ 试听</button></span></label>
+          <label data-key="ttsEndpoint"><span data-i18n="settings.ttsEndpoint">朗读 Endpoint</span><input name="ttsEndpoint" type="url" placeholder="https://&lt;resource&gt;.openai.azure.com/"></label>
+          <label data-key="ttsDeployment"><span data-i18n="settings.ttsDeployment">朗读部署</span><input name="ttsDeployment" required></label>
+          <label data-key="ttsVoice"><span data-i18n="settings.ttsVoice">朗读音色</span><span class="voice-row"><select name="ttsVoice"></select><button type="button" id="preview-tts" title="用所选音色和默认语言朗读示例句" data-i18n-title="preview.ttsTitle" data-i18n="preview.button">▶ 试听</button></span></label>
+          <label data-key="intentEndpoint"><span data-i18n="settings.intentEndpoint">意图解析 Endpoint</span><input name="intentEndpoint" type="url" placeholder="https://&lt;resource&gt;.openai.azure.com/"></label>
+          <label data-key="intentDeployment"><span data-i18n="settings.intentDeployment">意图解析部署</span><input name="intentDeployment" required></label>
+          <label data-key="intentEffort"><span data-i18n="settings.intentEffort">意图解析推理强度</span><select name="intentEffort"><option>none</option><option>minimal</option><option>low</option><option>medium</option><option>high</option><option>xhigh</option></select></label>
+        </fieldset>
+        <fieldset><legend data-i18n="settings.sessions">终端 session</legend>
+          <label data-key="workspace"><span data-i18n="settings.workspace">工作区</span><input name="workspace" required placeholder="绝对路径" data-i18n-placeholder="settings.absolute"></label>
+          <label data-key="roots"><span data-i18n="settings.roots">额外允许的根目录（每行一个绝对路径）</span><textarea name="roots" rows="2"></textarea></label>
+          <label data-key="dshProfile"><span data-i18n="settings.dshProfile">dsh profile</span><input name="dshProfile" required></label>
+          <label class="inline" data-key="dshToken"><input name="dshToken" type="checkbox"> <span data-i18n="settings.dshToken">给 dsh 注入 Foundry token</span></label>
+          <label class="inline" data-key="hooks"><input name="hooks" type="checkbox"> <span data-i18n="settings.hooks">启用原生权限 hooks（Claude Code / Codex）</span></label>
+          <label data-key="verifyTimeout"><span data-i18n="settings.verifyTimeout">验收命令超时（秒）</span><input name="verifyTimeout" type="number" min="0.001" step="any" required></label>
+          <label data-key="uploadMb"><span data-i18n="settings.uploadMb">上传上限（MiB）</span><input name="uploadMb" type="number" min="0.001" step="any" required></label>
         </fieldset>
         <p id="settings-status" class="hint" role="status"></p>
-        <div class="actions"><button type="button" id="settings-defaults">全部恢复默认</button><button value="save" class="primary" id="settings-save">保存</button><button value="cancel" formnovalidate>取消</button></div>
+        <div class="actions"><button type="button" id="settings-defaults" data-i18n="settings.defaults">全部恢复默认</button><button value="save" class="primary" id="settings-save" data-i18n="settings.save">保存</button><button value="cancel" formnovalidate data-i18n="common.cancel">取消</button></div>
       </form>
     </dialog>
     <dialog id="download-dialog" aria-labelledby="download-title">
       <form method="dialog" id="download-form">
-        <h2 id="download-title">下载文件</h2>
-        <label>文件路径<input id="download-path" required placeholder="相对于当前工作路径，或绝对路径"></label>
-        <p class="hint">当前工作路径是该 session 现在所在的目录（shell 中 cd 后随之变化），文件须位于允许的根目录内。</p>
-        <div class="actions"><button value="download" class="primary" id="download-confirm">下载</button><button value="cancel" formnovalidate>取消</button></div>
+        <h2 id="download-title" data-i18n="download.dialog">下载文件</h2>
+        <label><span data-i18n="download.path">文件路径</span><input id="download-path" required placeholder="相对于当前工作路径，或绝对路径" data-i18n-placeholder="download.placeholder"></label>
+        <p class="hint" data-i18n="download.hint">当前工作路径是该 session 现在所在的目录（shell 中 cd 后随之变化），文件须位于允许的根目录内。</p>
+        <div class="actions"><button value="download" class="primary" id="download-confirm" data-i18n="download.confirm">下载</button><button value="cancel" formnovalidate data-i18n="common.cancel">取消</button></div>
       </form>
     </dialog>
     <aside>
-      <div class="voice-head"><h2>语音助手</h2><span id="live-status" role="status" data-state="disabled"><span class="dot" aria-hidden="true"></span><span id="live-label">语音不可用</span></span></div>
+      <div class="voice-head"><h2 data-i18n="voice.title">语音助手</h2><span id="live-status" role="status" data-state="disabled"><span class="dot" aria-hidden="true"></span><span id="live-label">语音不可用</span></span></div>
       <div id="decisions" aria-live="polite"></div>
-      <p id="error" role="alert" hidden><span id="error-text"></span> <button type="button" id="error-close">知道了</button></p>
-      <div class="controls voice-controls"><button id="connect" class="primary">连接语音</button><button id="mic" class="switch" role="switch" aria-checked="true" disabled title="关闭后助手听不到你，连接保持">麦克风 开</button><button id="mute" class="switch" role="switch" aria-checked="true" disabled title="关闭后不播放助手语音，提醒改为静默上下文，连接保持">助手声音 开</button><label class="inline"><input id="speech" type="checkbox"> 朗读待确认提醒</label></div>
+      <p id="error" role="alert" hidden><span id="error-text"></span> <button type="button" id="error-close" data-i18n="error.close">知道了</button></p>
+      <div class="controls voice-controls"><button id="connect" class="primary">连接语音</button><button id="mic" class="switch" role="switch" aria-checked="true" disabled title="关闭后助手听不到你，连接保持" data-i18n-title="voice.micTitle">麦克风 开</button><button id="mute" class="switch" role="switch" aria-checked="true" disabled title="关闭后不播放助手语音，提醒改为静默上下文，连接保持" data-i18n-title="voice.soundTitle">助手声音 开</button><label class="inline"><input id="speech" type="checkbox"> <span data-i18n="voice.speech">朗读待确认提醒</span></label></div>
       <p id="live-error" class="hint" hidden></p>
-      <audio id="audio" autoplay></audio><button id="play" hidden>播放语音</button>
+      <audio id="audio" autoplay></audio><button id="play" hidden data-i18n="voice.play">播放语音</button>
       <div id="transcript" aria-live="polite"></div>
-      <form id="request"><label>任务 / 反馈<textarea id="request-text" placeholder="要求助手创建、观察或操作 session；写入前需授权。Ctrl+Enter 提交"></textarea></label><button class="primary" title="Ctrl+Enter">交给助手</button></form>
+      <form id="request"><label><span data-i18n="request.label">任务 / 反馈</span><textarea id="request-text" placeholder="要求助手创建、观察或操作 session；写入前需授权。Ctrl+Enter 提交" data-i18n-placeholder="request.placeholder"></textarea></label><button class="primary" title="Ctrl+Enter" data-i18n="request.submit">交给助手</button></form>
       <div id="grants"></div>
-      <form id="verify"><label>独立验收命令<input id="verify-command" placeholder="例如 node --test；只执行你明确授权的命令"></label><button>执行独立验收</button><button type="button" id="verify-cancel" hidden>取消验收</button></form>
+      <form id="verify"><label><span data-i18n="verify.label">独立验收命令</span><input id="verify-command" placeholder="例如 node --test；只执行你明确授权的命令" data-i18n-placeholder="verify.placeholder"></label><button data-i18n="verify.run">执行独立验收</button><button type="button" id="verify-cancel" hidden data-i18n="verify.cancel">取消验收</button></form>
       <p id="verification" role="status"></p>
-      <details id="verification-details" hidden><summary>验收输出（尾部）</summary><pre id="verification-output"></pre></details>
-      <details><summary>用量与说明</summary><p id="usage"></p>
-        <p>终端输出不代表任务已通过验收。任意运行中任务不支持无损硬暂停。“始终允许”只对同一 session 中完全相同的确认或输入生效，撤销、等待反馈或进程结束时清除。</p>
+      <details id="verification-details" hidden><summary data-i18n="verify.output">验收输出（尾部）</summary><pre id="verification-output"></pre></details>
+      <details><summary data-i18n="usage.title">用量与说明</summary><p id="usage"></p>
+        <p data-i18n="usage.notes">终端输出不代表任务已通过验收。任意运行中任务不支持无损硬暂停。“始终允许”只对同一 session 中完全相同的确认或输入生效，撤销、等待反馈或进程结束时清除。</p>
       </details>
     </aside>
   </main>
+  <!-- Not deferred: the login form is shown in the chosen language before the terminal library has loaded. -->
+  <script src="/i18n.js"></script>
 </body>
 </html>

@@ -82,10 +82,13 @@ test("text helpers condense spinners and detect native Codex, Claude and trust c
     ["批准3号提案", true, 3], ["批准三号提案", true, 3], ["批准第3个提案", true, 3], ["批准提案3", true, 3],
     ["我批准3号", true, 3], ["好的，批准3号", true, 3], ["请批准3号。", true, 3], ["好的，那就批准 3 号吧", true, 3],
     ["拒绝提案 12", false, 12], ["不同意二十三号", false, 23], ["批准吧", true, null], ["approve proposal 4", true, 4],
+    ["Approve three.", true, 3], ["OK, approve proposal seventeen", true, 17], ["Reject number 7", false, 7], ["Please reject twelve", false, 12],
   ]) assert.deepEqual(parseDecision(speech), { allowed, mode: "once", number }, speech);
+  assert.deepEqual(parseDecision("Always allow proposal two"), { allowed: true, mode: "always", number: 2 });
   assert.deepEqual(parseDecision("始终允许 5 号提案"), { allowed: true, mode: "always", number: 5 });
   for (const speech of ["不批准3号", "别批准3号", "先不要批准3号", "要批准3号吗", "批准3号可以吗", "他说批准3号",
-    "批准3号和4号", "先看看输出再批准3号", "我不同意你的看法", "批准 3？", "批准3号?", "同意吗？", "确认？"]) assert.equal(parseDecision(speech), null, speech);
+    "批准3号和4号", "先看看输出再批准3号", "我不同意你的看法", "批准 3？", "批准3号?", "同意吗？", "确认？",
+    "don't approve three", "approve three and four", "should I approve three?", "approve threefold"]) assert.equal(parseDecision(speech), null, speech);
 });
 
 test("trailing punctuation is trimmed in linear time, even around long runs", () => {
@@ -461,6 +464,11 @@ test("approved session creation delivers its initial task after startup output; 
     "/bin/bash", "-c", "sleep .7; printf 'STARTUP_READY\\n'; exec /bin/bash --noprofile --norc -i",
   ] } });
   const proposal = await sessions.propose({ kind: "create", harness: "shell", data: "printf launched > launched.txt" });
+  // The page words the create preview itself from the task, which is redacted like the preview.
+  assert.equal(proposal.task, "printf launched > launched.txt");
+  const secret = await sessions.propose({ kind: "create", harness: "shell", data: "export api_key=synthetic-secret" });
+  assert.ok(!secret.task.includes("synthetic-secret") && !secret.preview.includes("synthetic-secret"));
+  await sessions.decide(secret.id, false, randomUUID());
   assert.equal(sessions.list().length, 0);
   await sessions.decide(proposal.id, true, randomUUID());
   const created = sessions.proposal(proposal.id).createdSessionId;
@@ -1373,6 +1381,16 @@ test("speech uses the Foundry v1 route with an Entra bearer token and redacts fa
   assert.equal(JSON.parse(calls.at(-1).options.body).voice, "coral");
   await voiced("你好", { voice: "sage" });
   assert.equal(JSON.parse(calls.at(-1).options.body).voice, "sage");
+  // The style prompt follows the voice language: the configured default, or the one a call names.
+  assert.match(JSON.parse(calls.at(-1).options.body).instructions, /普通话/);
+  await voiced("Hello", { language: "en" });
+  assert.match(JSON.parse(calls.at(-1).options.body).instructions, /natural, concise English/);
+  const english = createSpeech({ endpoint: "https://fixture.openai.azure.com/", language: "en", credential, fetch: async (_url, options) => {
+    calls.push({ options });
+    return new Response(Buffer.from("ID3"), { headers: { "Content-Type": "audio/mpeg" } });
+  } });
+  await english("Hello");
+  assert.match(JSON.parse(calls.at(-1).options.body).instructions, /English/);
 });
 
 test("intent interpreter defaults to gpt-6.1-sol with low effort and accepts only GPT deployments", async (t) => {

@@ -42,7 +42,7 @@ flowchart LR
 | `scripts/live-assistant.mjs` | 入口：读取环境变量，调用 `startAssistant`，SIGINT/SIGTERM 时关闭后端（不关闭 tmux） |
 | `server.mjs` | 精确 Host/Origin 校验、密码登录（内存 cookie，8 小时）、zod 校验的 JSON API、终端 WebSocket、静态资源（含本地 xterm，无 CDN）、状态广播 |
 | `sessions.mjs` | tmux session 生命周期、control-mode 观察器与快照、键盘拥有者、统一提案表、始终允许授权、hook socket、独立验收进程、持久化与恢复 |
-| `assistant.mjs` | Live 指令、意图解释器（`gpt-6.1-sol` 结构化输出）、语音决策解析（“批准 N”等）、向 Live 推送压缩后的终端进展 |
+| `assistant.mjs` | 按语音助手语言（`zh-CN`/`en`）生成的 Live 指令、意图解释器（`gpt-6.1-sol` 结构化输出）、语音决策解析（“批准 N”“approve N”等）、向 Live 推送压缩后的终端进展 |
 | `live.mjs` | `FoundryLive`：WebRTC 会话创建、Sideband 控制流、转写与委派事件、上下文注入、用量记录、不确定创建的恢复 |
 | `foundry.mjs` | `AzureCliCredential`（可指定订阅）、Foundry HTTPS 根端点校验、`createSpeech` TTS |
 | `harness.mjs` | shell/claude/codex/copilot/dsh 的启动命令（`defaultAdapters`）、Claude/Codex hook 参数、可选的 DSH 临时 token、继承环境（`harnessEnvironment`）与 PATH 查找（`findExecutable`） |
@@ -50,7 +50,7 @@ flowchart LR
 | `keys.mjs` | 按键提案的解析与规范化（键名、Ctrl/Alt/Shift 组合、拒绝终端无法区分的组合）和逐步编码（tmux 键名或终端字节） |
 | `text.mjs` | `condense` / `DeltaMemory` 上下文压缩、`redact` 脱敏、`detectPrompt` 屏幕确认识别 |
 | `store.mjs` | 原子写 JSON（`.pending` + fsync + rename）、串行队列、追加式事件日志 |
-| `public/` | 浏览器端：登录、可关闭的 tab、新建对话框（工作目录）、xterm、提案卡片、语音（WebRTC）、朗读开关、独立验收表单；Fluent 风格浅色主题 |
+| `public/` | 浏览器端：登录、可关闭的 tab、新建对话框（工作目录）、xterm、提案卡片、语音（WebRTC）、朗读开关、独立验收表单、中英文界面语言（`i18n.js`，按浏览器选择，与语音语言分开）；Fluent 风格浅色主题 |
 
 ## 终端与 session
 
@@ -83,7 +83,7 @@ flowchart LR
 
 - 语音“切到某 session”（解释器 `focus`）不是提案：助手直接更新 `focused` 并递增 `focusRequest`，页面在该计数变化时切换（首次加载/重连不重放）；`input`/`create` 等意图带 `focus: true` 时同样切换，新建的在批准且启动后切换。
 - **注意力**：页面在终端输入框获得焦点且窗口在前台时经 WebSocket `attention` 上报，后端按 session 记录有焦点的客户端（切换附着或断线即撤销）；点击 tab 名称即把焦点放进其终端。harness 发起的 `prompt`/`permission` 在有焦点的 session 中产生时，或焦点移入时已待决的，标为 `quiet`：不出现在 `pending()`、不广播 `proposal`，`permission` 的 hook 继续等待；同时发出 `handled` 事件，助手以静默上下文告诉 Live 不要提醒。最后一个焦点离开时，仍待决的 `quiet` 提案去掉标记、以原编号重新广播。在终端中打出非被动输入（或选择“在终端处理”）时，该 session 待决的这两类提案转为 `terminal`：hook 放弃，后端记住已交还的确认（屏幕确认记 anchor，权限请求记通配），直到确认离开屏幕或用户按下回车前不再把原生提示识别成新提案；非 quiet 的再发 `handled`。助手发起的提案不受影响。
-- 多张提案可以同时存在，按任意顺序决定。决定方式：按钮（批准/拒绝/始终允许/在终端处理），或语音“批准 N / 拒绝 N / 始终允许 N”（支持中文数字；只有一张待决时可省略编号）。
+- 多张提案可以同时存在，按任意顺序决定。决定方式：按钮（批准/拒绝/始终允许/在终端处理），或语音“批准 N / 拒绝 N / 始终允许 N”“approve N / reject N / always allow N”，两种语音语言下都可用（支持中文数字和不超过 twenty 的英文数词；只有一张待决时可省略编号）。
 - **授权纪元**（`revision`）只在用户接管键盘、等待反馈或进程结束时改变；程序输出和 spinner 不会使提案失效。屏幕确认按问题区域锚定，提示离开屏幕才失效。解释期间纪元变化时，卡片会标注“解析期间你操作过该终端”，而不是丢弃请求。
 - **始终允许**按 `(kind, key)` 记在 session 上，不计次、不限时；撤销、等待反馈或进程结束会清除它，且不跨 session。
 - 助手的话、引用的话、终端文字和沉默都不构成授权。“等待反馈/等待用户意见/暂停当前会话”立即清除焦点 session 的始终允许，并作废其待决提案；它不冻结进程。

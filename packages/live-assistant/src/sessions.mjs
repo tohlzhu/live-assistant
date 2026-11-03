@@ -697,7 +697,8 @@ export class Sessions extends EventEmitter {
       const proposal = this.addProposal({
         kind, sessionId, data, control, source, key: kind === "input" ? digest(data) : kind === "keys" ? digest(JSON.stringify(steps)) : null, focus,
         ...(kind === "keys" ? { steps, preview: describeKeys(steps) } : {}),
-        ...(kind === "create" ? { harness, name: label ?? harness, cwd, preview: `${data || "（空终端）"}\n目录：${cwd}` } : {}),
+        // `task` lets the page word a create preview in its own language; like the preview it is redacted.
+        ...(kind === "create" ? { harness, name: label ?? harness, cwd, task: redact(data), preview: `${data || "（空终端）"}\n目录：${cwd}` } : {}),
         ...(kind === "close" ? { preview: session.state === "running" ? "终止进程并关闭 tab" : "关闭 tab" } : {}),
         changedDuringInterpretation: epoch !== null && session ? epoch !== session.revision : false,
       });
